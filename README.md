@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hoshop - Барааны код удирдлага
 
-## Getting Started
+Next.js 16 project with PostgreSQL database for managing product codes (барааны код).
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 18+ 
+- PostgreSQL database
+- npm or yarn
+
+## Setup Instructions
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Database Setup
+
+1. Create a PostgreSQL database named `hos`:
+```bash
+createdb hos
+# or using psql:
+psql -U postgres
+CREATE DATABASE hos;
+```
+
+2. Run the schema SQL to create the table:
+```bash
+psql -U postgres -d hos -f schema.sql
+```
+
+Or manually in psql:
+```sql
+CREATE TABLE IF NOT EXISTS baraanii_kod (
+  id SERIAL PRIMARY KEY,
+  kod VARCHAR(255) NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 3. Environment Variables
+
+Create a `.env.local` file in the root directory:
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=hos
+DB_USER=postgres
+DB_PASSWORD=your_password_here
+```
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- ✅ Full CRUD operations for product codes (барааны код)
+- ✅ Modern UI with shadcn/ui components
+- ✅ PostgreSQL database integration
+- ✅ TypeScript support
+- ✅ Responsive design
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+- `app/page.tsx` - Main CRUD interface
+- `app/api/baraanii-kod/` - API routes for CRUD operations
+- `lib/db.ts` - PostgreSQL connection pool
+- `schema.sql` - Database schema
+- `components/ui/` - shadcn/ui components
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Endpoints
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `GET /api/baraanii-kod` - Get all product codes
+- `POST /api/baraanii-kod` - Create a new product code
+- `PUT /api/baraanii-kod/[id]` - Update a product code
+- `DELETE /api/baraanii-kod/[id]` - Delete a product code
