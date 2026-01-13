@@ -21,7 +21,9 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const response = await fetch('/api/auth/session');
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+      });
       const data = await response.json();
       
       if (data.authenticated) {

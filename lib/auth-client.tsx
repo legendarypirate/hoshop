@@ -25,7 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch('/api/auth/session');
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+      });
       const data = await response.json();
       
       if (data.authenticated) {
@@ -44,7 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { 
+        method: 'POST',
+        credentials: 'include',
+      });
       setUser(null);
       router.push('/login');
       router.refresh();

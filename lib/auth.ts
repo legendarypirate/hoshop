@@ -38,11 +38,17 @@ export async function getSession(): Promise<User | null> {
 
 export async function setSession(user: User): Promise<void> {
   const cookieStore = await cookies();
+  
+  // Only use secure cookies if explicitly enabled via env var AND using HTTPS
+  // For HTTP deployments, set USE_SECURE_COOKIES=false
+  const useSecureCookies = process.env.USE_SECURE_COOKIES === 'true';
+  
   cookieStore.set('session', JSON.stringify(user), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: useSecureCookies,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/',
   });
 }
 

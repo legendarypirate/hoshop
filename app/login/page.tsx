@@ -20,7 +20,9 @@ export default function LoginPage() {
 
   const checkSession = async () => {
     try {
-      const response = await fetch('/api/auth/session');
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+      });
       const data = await response.json();
       if (data.authenticated) {
         router.push('/');
@@ -39,6 +41,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ phone, password }),
       });
 
