@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { 
@@ -11,7 +12,9 @@ import {
   Users, 
   Settings,
   FileText,
-  LogOut
+  LogOut,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 const menuItems = [
@@ -19,11 +22,6 @@ const menuItems = [
     title: 'Нүүр хуудас',
     href: '/',
     icon: Home,
-  },
-  {
-    title: 'Барааны код',
-    href: '/baraanii-kod',
-    icon: Package,
   },
   {
     title: 'Бараа',
@@ -45,16 +43,29 @@ const menuItems = [
     href: '/order',
     icon: FileText,
   },
+];
+
+const settingsSubItems = [
   {
-    title: 'Тохиргоо',
-    href: '/settings',
-    icon: Settings,
+    title: 'Барааны код',
+    href: '/settings/baraanii-kod',
+  },
+  {
+    title: 'Өнгө',
+    href: '/settings/colors',
+  },
+  {
+    title: 'Хэмжээ',
+    href: '/settings/sizes',
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(
+    pathname?.startsWith('/settings') || false
+  );
 
   const handleLogout = async () => {
     try {
@@ -69,12 +80,14 @@ export function Sidebar() {
     }
   };
 
+  const isSettingsActive = pathname?.startsWith('/settings');
+
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-background">
       <div className="flex h-16 items-center border-b px-6">
         <h2 className="text-lg font-semibold">Khos-shop</h2>
       </div>
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -95,6 +108,51 @@ export function Sidebar() {
             </Link>
           );
         })}
+        
+        {/* Settings Menu */}
+        <div className="mt-2">
+          <button
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            className={cn(
+              'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              isSettingsActive
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Settings className="h-5 w-5" />
+              <span>Тохиргоо</span>
+            </div>
+            {isSettingsOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+          
+          {isSettingsOpen && (
+            <div className="ml-4 mt-1 space-y-1 border-l pl-4">
+              {settingsSubItems.map((subItem) => {
+                const isSubActive = pathname === subItem.href;
+                return (
+                  <Link
+                    key={subItem.href}
+                    href={subItem.href}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      isSubActive
+                        ? 'bg-primary/20 text-primary font-medium'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    )}
+                  >
+                    <span>{subItem.title}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </nav>
       <div className="border-t p-4">
         <Button

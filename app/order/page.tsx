@@ -36,16 +36,31 @@ interface BaraaniiKod {
   kod: string;
 }
 
+interface Color {
+  id: number;
+  name: string;
+}
+
+interface Size {
+  id: number;
+  name: string;
+}
+
 interface Order {
   id: number;
   phone: string;
   baraanii_kod_id: number;
   baraanii_kod_name?: string;
+  color_id: number | null;
+  color_name?: string;
+  size_id: number | null;
+  size_name?: string;
   price: number | null;
   feature: string | null;
   number: number | null;
   order_date: string | null;
   paid_date: string | null;
+  received_date: string | null;
   with_delivery: boolean;
   comment: string | null;
   created_at: string;
@@ -54,6 +69,8 @@ interface Order {
 export default function OrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [baraaniiKodList, setBaraaniiKodList] = useState<BaraaniiKod[]>([]);
+  const [colorsList, setColorsList] = useState<Color[]>([]);
+  const [sizesList, setSizesList] = useState<Size[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -62,11 +79,16 @@ export default function OrderPage() {
   // Form state
   const [phone, setPhone] = useState('');
   const [baraaniiKodId, setBaraaniiKodId] = useState<string>('');
+  const [newBaraaniiKod, setNewBaraaniiKod] = useState('');
+  const [isNewBaraaniiKod, setIsNewBaraaniiKod] = useState(false);
+  const [colorId, setColorId] = useState<string>('none');
+  const [sizeId, setSizeId] = useState<string>('none');
   const [price, setPrice] = useState('');
   const [feature, setFeature] = useState('');
   const [number, setNumber] = useState('');
   const [orderDate, setOrderDate] = useState('');
   const [paidDate, setPaidDate] = useState('');
+  const [receivedDate, setReceivedDate] = useState('');
   const [withDelivery, setWithDelivery] = useState(false);
   const [comment, setComment] = useState('');
 
@@ -98,20 +120,51 @@ export default function OrderPage() {
     }
   };
 
+  // Fetch colors
+  const fetchColors = async () => {
+    try {
+      const response = await fetch('/api/colors');
+      if (!response.ok) throw new Error('Failed to fetch colors');
+      const data = await response.json();
+      setColorsList(data);
+    } catch (err) {
+      console.error('Failed to load colors:', err);
+    }
+  };
+
+  // Fetch sizes
+  const fetchSizes = async () => {
+    try {
+      const response = await fetch('/api/sizes');
+      if (!response.ok) throw new Error('Failed to fetch sizes');
+      const data = await response.json();
+      setSizesList(data);
+    } catch (err) {
+      console.error('Failed to load sizes:', err);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchBaraaniiKod();
+    fetchColors();
+    fetchSizes();
   }, []);
 
   // Reset form
   const resetForm = () => {
     setPhone('');
     setBaraaniiKodId('');
+    setNewBaraaniiKod('');
+    setIsNewBaraaniiKod(false);
+    setColorId('none');
+    setSizeId('none');
     setPrice('');
     setFeature('');
     setNumber('');
     setOrderDate('');
     setPaidDate('');
+    setReceivedDate('');
     setWithDelivery(false);
     setComment('');
     setError('');
@@ -129,11 +182,15 @@ export default function OrderPage() {
     setEditingOrder(order);
     setPhone(order.phone);
     setBaraaniiKodId(order.baraanii_kod_id.toString());
+    setIsNewBaraaniiKod(false);
+    setColorId(order.color_id?.toString() || 'none');
+    setSizeId(order.size_id?.toString() || 'none');
     setPrice(order.price?.toString() || '');
     setFeature(order.feature || '');
     setNumber(order.number?.toString() || '');
     setOrderDate(order.order_date || '');
     setPaidDate(order.paid_date || '');
+    setReceivedDate(order.received_date || '');
     setWithDelivery(order.with_delivery);
     setComment(order.comment || '');
     setError('');
@@ -147,9 +204,40 @@ export default function OrderPage() {
       return;
     }
 
-    if (!baraaniiKodId) {
-      setError('Барааны код сонгох шаардлагатай');
-      return;
+    let finalBaraaniiKodId = baraaniiKodId;
+
+    // If creating new baraanii_kod
+    if (isNewBaraaniiKod) {
+      if (!newBaraaniiKod.trim()) {
+        setError('Барааны код оруулах шаардлагатай');
+        return;
+      }
+
+      try {
+        const createResponse = await fetch('/api/baraanii-kod', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kod: newBaraaniiKod.trim() }),
+        });
+
+        if (!createResponse.ok) {
+          const data = await createResponse.json();
+          throw new Error(data.error || 'Failed to create product code');
+        }
+
+        const newKod = await createResponse.json();
+        finalBaraaniiKodId = newKod.id.toString();
+        // Refresh the list
+        fetchBaraaniiKod();
+      } catch (err: any) {
+        setError(err.message || 'Барааны код үүсгэхэд алдаа гарлаа');
+        return;
+      }
+    } else {
+      if (!baraaniiKodId) {
+        setError('Барааны код сонгох шаардлагатай');
+        return;
+      }
     }
 
     try {
@@ -158,12 +246,15 @@ export default function OrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: phone.trim(),
-          baraanii_kod_id: parseInt(baraaniiKodId),
+          baraanii_kod_id: parseInt(finalBaraaniiKodId),
+          color_id: colorId && colorId !== 'none' ? parseInt(colorId) : null,
+          size_id: sizeId && sizeId !== 'none' ? parseInt(sizeId) : null,
           price: price ? parseFloat(price) : null,
           feature: feature.trim() || null,
           number: number ? parseInt(number) : null,
           order_date: orderDate || null,
           paid_date: paidDate || null,
+          received_date: receivedDate || null,
           withDelivery,
           comment: comment.trim() || null,
         }),
@@ -201,11 +292,14 @@ export default function OrderPage() {
         body: JSON.stringify({
           phone: phone.trim(),
           baraanii_kod_id: parseInt(baraaniiKodId),
+          color_id: colorId && colorId !== 'none' ? parseInt(colorId) : null,
+          size_id: sizeId && sizeId !== 'none' ? parseInt(sizeId) : null,
           price: price ? parseFloat(price) : null,
           feature: feature.trim() || null,
           number: number ? parseInt(number) : null,
           order_date: orderDate || null,
           paid_date: paidDate || null,
+          received_date: receivedDate || null,
           withDelivery,
           comment: comment.trim() || null,
         }),
@@ -280,11 +374,14 @@ export default function OrderPage() {
               <TableHead className="w-[50px]">ID</TableHead>
               <TableHead>Утас</TableHead>
               <TableHead>Барааны код</TableHead>
+              <TableHead>Өнгө</TableHead>
+              <TableHead>Хэмжээ</TableHead>
               <TableHead>Үнэ</TableHead>
               <TableHead>Онцлог</TableHead>
               <TableHead>Тоо ширхэг</TableHead>
               <TableHead>Захиалгын огноо</TableHead>
               <TableHead>Төлбөрийн огноо</TableHead>
+              <TableHead>Ирж авсан огноо</TableHead>
               <TableHead>Хүргэлттэй</TableHead>
               <TableHead>Тайлбар</TableHead>
               <TableHead className="w-[150px]">Үйлдэл</TableHead>
@@ -293,14 +390,14 @@ export default function OrderPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8">
+                <TableCell colSpan={13} className="text-center py-8">
                   Ачааллаж байна...
                 </TableCell>
               </TableRow>
             ) : orders.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={11}
+                  colSpan={13}
                   className="text-center py-8 text-muted-foreground"
                 >
                   Мэдээлэл олдсонгүй
@@ -314,6 +411,8 @@ export default function OrderPage() {
                   <TableCell>
                     {order.baraanii_kod_name || `ID: ${order.baraanii_kod_id}`}
                   </TableCell>
+                  <TableCell>{order.color_name || '-'}</TableCell>
+                  <TableCell>{order.size_name || '-'}</TableCell>
                   <TableCell>{formatCurrency(order.price)}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
                     {order.feature || '-'}
@@ -321,6 +420,7 @@ export default function OrderPage() {
                   <TableCell>{order.number || '-'}</TableCell>
                   <TableCell>{formatDate(order.order_date)}</TableCell>
                   <TableCell>{formatDate(order.paid_date)}</TableCell>
+                  <TableCell>{formatDate(order.received_date)}</TableCell>
                   <TableCell>
                     {order.with_delivery ? 'Тийм' : 'Үгүй'}
                   </TableCell>
@@ -391,20 +491,100 @@ export default function OrderPage() {
                 <Label htmlFor="baraaniiKod">
                   Барааны код <span className="text-destructive">*</span>
                 </Label>
+                {!editingOrder && (
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Checkbox
+                      id="newBaraaniiKod"
+                      checked={isNewBaraaniiKod}
+                      onCheckedChange={(checked: boolean) => {
+                        setIsNewBaraaniiKod(checked === true);
+                        setBaraaniiKodId('');
+                        setNewBaraaniiKod('');
+                        setError('');
+                      }}
+                    />
+                    <Label
+                      htmlFor="newBaraaniiKod"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Шинэ барааны код нэмэх
+                    </Label>
+                  </div>
+                )}
+                {isNewBaraaniiKod && !editingOrder ? (
+                  <Input
+                    id="newBaraaniiKod"
+                    value={newBaraaniiKod}
+                    onChange={(e) => {
+                      setNewBaraaniiKod(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="Шинэ барааны код оруулна уу"
+                  />
+                ) : (
+                  <Select
+                    value={baraaniiKodId}
+                    onValueChange={(value: string) => {
+                      setBaraaniiKodId(value);
+                      setError('');
+                    }}
+                  >
+                    <SelectTrigger id="baraaniiKod">
+                      <SelectValue placeholder="Барааны код сонгоно уу" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {baraaniiKodList.map((bk) => (
+                        <SelectItem key={bk.id} value={bk.id.toString()}>
+                          {bk.kod}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="color">Өнгө</Label>
                 <Select
-                  value={baraaniiKodId}
+                  value={colorId}
                   onValueChange={(value: string) => {
-                    setBaraaniiKodId(value);
+                    setColorId(value);
                     setError('');
                   }}
                 >
-                  <SelectTrigger id="baraaniiKod">
-                    <SelectValue placeholder="Барааны код сонгоно уу" />
+                  <SelectTrigger id="color">
+                    <SelectValue placeholder="Өнгө сонгоно уу" />
                   </SelectTrigger>
                   <SelectContent>
-                    {baraaniiKodList.map((bk) => (
-                      <SelectItem key={bk.id} value={bk.id.toString()}>
-                        {bk.kod}
+                    <SelectItem value="none">Өнгө сонгохгүй</SelectItem>
+                    {colorsList.map((color) => (
+                      <SelectItem key={color.id} value={color.id.toString()}>
+                        {color.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="size">Хэмжээ</Label>
+                <Select
+                  value={sizeId}
+                  onValueChange={(value: string) => {
+                    setSizeId(value);
+                    setError('');
+                  }}
+                >
+                  <SelectTrigger id="size">
+                    <SelectValue placeholder="Хэмжээ сонгоно уу" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Хэмжээ сонгохгүй</SelectItem>
+                    {sizesList.map((size) => (
+                      <SelectItem key={size.id} value={size.id.toString()}>
+                        {size.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -448,7 +628,7 @@ export default function OrderPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="orderDate">Захиалгын огноо</Label>
                 <Input
@@ -466,6 +646,16 @@ export default function OrderPage() {
                   type="date"
                   value={paidDate}
                   onChange={(e) => setPaidDate(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="receivedDate">Ирж авсан огноо</Label>
+                <Input
+                  id="receivedDate"
+                  type="date"
+                  value={receivedDate}
+                  onChange={(e) => setReceivedDate(e.target.value)}
                 />
               </div>
             </div>

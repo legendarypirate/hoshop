@@ -5,9 +5,14 @@ import pool from '@/lib/db';
 export async function GET() {
   try {
     const result = await pool.query(`
-      SELECT o.*, bk.kod as baraanii_kod_name
+      SELECT o.*, 
+        bk.kod as baraanii_kod_name,
+        c.name as color_name,
+        s.name as size_name
       FROM order_table o
       LEFT JOIN baraanii_kod bk ON o.baraanii_kod_id = bk.id
+      LEFT JOIN colors c ON o.color_id = c.id
+      LEFT JOIN sizes s ON o.size_id = s.id
       ORDER BY o.order_date DESC, o.created_at DESC
     `);
     return NextResponse.json(result.rows);
@@ -27,11 +32,14 @@ export async function POST(request: NextRequest) {
     const {
       phone,
       baraanii_kod_id,
+      color_id,
+      size_id,
       price,
       feature,
       number,
       order_date,
       paid_date,
+      received_date,
       withDelivery,
       comment,
     } = body;
@@ -52,17 +60,20 @@ export async function POST(request: NextRequest) {
 
     const result = await pool.query(
       `INSERT INTO order_table (
-        phone, baraanii_kod_id, price, feature, number, 
-        order_date, paid_date, with_delivery, comment
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        phone, baraanii_kod_id, color_id, size_id, price, feature, number, 
+        order_date, paid_date, received_date, with_delivery, comment
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         phone.trim(),
         baraanii_kod_id,
+        color_id || null,
+        size_id || null,
         price || null,
         feature || null,
         number || null,
         order_date || null,
         paid_date || null,
+        received_date || null,
         withDelivery || false,
         comment || null,
       ]
