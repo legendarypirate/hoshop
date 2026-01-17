@@ -55,7 +55,16 @@ async function setupDatabase() {
     console.log('✅ All tables created successfully!');
     
     // Verify all tables exist
-    const tables = ['baraanii_kod', 'order_table', 'users'];
+    const tables = [
+      'baraanii_kod', 
+      'order_table', 
+      'users', 
+      'colors', 
+      'sizes', 
+      'items', 
+      'item_movements', 
+      'baraanii_kod_options'
+    ];
     for (const tableName of tables) {
       const result = await pool.query(`
         SELECT EXISTS (

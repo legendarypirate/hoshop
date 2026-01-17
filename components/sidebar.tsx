@@ -14,7 +14,8 @@ import {
   FileText,
   LogOut,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Activity
 } from 'lucide-react';
 
 const menuItems = [
@@ -42,6 +43,11 @@ const menuItems = [
     title: 'Захиалга',
     href: '/order',
     icon: FileText,
+  },
+  {
+    title: 'Live',
+    href: '/live',
+    icon: Activity,
   },
 ];
 

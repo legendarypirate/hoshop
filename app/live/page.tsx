@@ -3,7 +3,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Upload, Plus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
@@ -13,14 +21,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,58 +29,46 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Plus, Pencil, Trash2, Upload } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 
-interface BaraaniiKod {
-  id: number;
-  kod: string;
-}
-
-interface Color {
-  id: number;
-  name: string;
-}
-
-interface Size {
-  id: number;
-  name: string;
-}
-
-interface Order {
+interface LiveOrder {
   id: number;
   phone: string;
-  baraanii_kod_id: number;
   baraanii_kod_name?: string;
-  color_id: number | null;
-  color_name?: string;
-  size_id: number | null;
-  size_name?: string;
   price: number | null;
-  feature: string | null;
-  number: number | null;
-  order_date: string | null;
-  paid_date: string | null;
-  received_date: string | null;
-  with_delivery: boolean;
   comment: string | null;
-  status?: number;
-  created_at: string;
+  number: number | null;
+  received_date: string | null;
+  delivered_date: string | null;
+  paid_date: string | null;
+  feature: string | null;
+  status: number;
 }
 
-export default function OrderPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [baraaniiKodList, setBaraaniiKodList] = useState<BaraaniiKod[]>([]);
-  const [colorsList, setColorsList] = useState<Color[]>([]);
-  const [sizesList, setSizesList] = useState<Size[]>([]);
+export default function LivePage() {
+  const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState<number>(1);
+  
+  // Create dialog states
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [baraaniiKodList, setBaraaniiKodList] = useState<Array<{id: number; kod: string}>>([]);
+  const [phone, setPhone] = useState('');
+  const [baraaniiKodId, setBaraaniiKodId] = useState<string>('');
+  const [newBaraaniiKod, setNewBaraaniiKod] = useState('');
+  const [isNewBaraaniiKod, setIsNewBaraaniiKod] = useState(false);
+  const [price, setPrice] = useState('');
+  const [comment, setComment] = useState('');
+  const [number, setNumber] = useState('');
+  const [receivedDate, setReceivedDate] = useState('');
+  const [deliveredDate, setDeliveredDate] = useState('');
+  const [paidDate, setPaidDate] = useState('');
+  const [feature, setFeature] = useState('');
   
   // Pagination states
   const [itemsPerPage, setItemsPerPage] = useState<number>(200);
@@ -91,47 +79,31 @@ export default function OrderPage() {
     phone: '',
     kod: '',
     price: '',
-    feature: '',
-    number: '',
-    order_date: '',
-    paid_date: '',
-    received_date: '',
     comment: '',
+    number: '',
+    received_date: '',
+    delivered_date: '',
+    paid_date: '',
+    feature: '',
   });
 
   // Date range filter states
   const [dateRangeFilter, setDateRangeFilter] = useState({
-    dateField: '' as 'order_date' | 'paid_date' | 'received_date' | '',
+    dateField: '' as 'received_date' | 'delivered_date' | 'paid_date' | '',
     startDate: '',
     endDate: '',
   });
-
-  // Form state
-  const [phone, setPhone] = useState('');
-  const [baraaniiKodId, setBaraaniiKodId] = useState<string>('');
-  const [newBaraaniiKod, setNewBaraaniiKod] = useState('');
-  const [isNewBaraaniiKod, setIsNewBaraaniiKod] = useState(false);
-  const [colorId, setColorId] = useState<string>('none');
-  const [sizeId, setSizeId] = useState<string>('none');
-  const [price, setPrice] = useState('');
-  const [feature, setFeature] = useState('');
-  const [number, setNumber] = useState('');
-  const [orderDate, setOrderDate] = useState('');
-  const [paidDate, setPaidDate] = useState('');
-  const [receivedDate, setReceivedDate] = useState('');
-  const [withDelivery, setWithDelivery] = useState(false);
-  const [comment, setComment] = useState('');
 
   // Fetch all orders
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/order?type=2');
+      const response = await fetch('/api/order?type=1');
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       setOrders(data);
     } catch (err) {
-      setError('Захиалга ачааллахад алдаа гарлаа');
+      setError('Мэдээлэл ачааллахад алдаа гарлаа');
       console.error(err);
     } finally {
       setLoading(false);
@@ -150,237 +122,10 @@ export default function OrderPage() {
     }
   };
 
-  // Fetch colors
-  const fetchColors = async () => {
-    try {
-      const response = await fetch('/api/colors');
-      if (!response.ok) throw new Error('Failed to fetch colors');
-      const data = await response.json();
-      setColorsList(data);
-    } catch (err) {
-      console.error('Failed to load colors:', err);
-    }
-  };
-
-  // Fetch sizes
-  const fetchSizes = async () => {
-    try {
-      const response = await fetch('/api/sizes');
-      if (!response.ok) throw new Error('Failed to fetch sizes');
-      const data = await response.json();
-      setSizesList(data);
-    } catch (err) {
-      console.error('Failed to load sizes:', err);
-    }
-  };
-
   useEffect(() => {
     fetchOrders();
     fetchBaraaniiKod();
-    fetchColors();
-    fetchSizes();
   }, []);
-
-  // Reset form
-  const resetForm = () => {
-    setPhone('');
-    setBaraaniiKodId('');
-    setNewBaraaniiKod('');
-    setIsNewBaraaniiKod(false);
-    setColorId('none');
-    setSizeId('none');
-    setPrice('');
-    setFeature('');
-    setNumber('');
-    setOrderDate('');
-    setPaidDate('');
-    setReceivedDate('');
-    setWithDelivery(false);
-    setComment('');
-    setError('');
-  };
-
-  // Open dialog for create
-  const openCreateDialog = () => {
-    setEditingOrder(null);
-    resetForm();
-    setIsDialogOpen(true);
-  };
-
-  // Open dialog for edit
-  const openEditDialog = (order: Order) => {
-    setEditingOrder(order);
-    setPhone(order.phone);
-    setBaraaniiKodId(order.baraanii_kod_id.toString());
-    setIsNewBaraaniiKod(false);
-    setColorId(order.color_id?.toString() || 'none');
-    setSizeId(order.size_id?.toString() || 'none');
-    setPrice(order.price?.toString() || '');
-    setFeature(order.feature || '');
-    setNumber(order.number?.toString() || '');
-    setOrderDate(order.order_date || '');
-    setPaidDate(order.paid_date || '');
-    setReceivedDate(order.received_date || '');
-    setWithDelivery(order.with_delivery);
-    setComment(order.comment || '');
-    setError('');
-    setIsDialogOpen(true);
-  };
-
-  // Create new order
-  const handleCreate = async () => {
-    if (!phone.trim()) {
-      setError('Утасны дугаар оруулах шаардлагатай');
-      return;
-    }
-
-    let finalBaraaniiKodId = baraaniiKodId;
-
-    // If creating new baraanii_kod
-    if (isNewBaraaniiKod) {
-      if (!newBaraaniiKod.trim()) {
-        setError('Барааны код оруулах шаардлагатай');
-        return;
-      }
-
-      try {
-        const createResponse = await fetch('/api/baraanii-kod', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kod: newBaraaniiKod.trim() }),
-        });
-
-        if (!createResponse.ok) {
-          const data = await createResponse.json();
-          throw new Error(data.error || 'Failed to create product code');
-        }
-
-        const newKod = await createResponse.json();
-        finalBaraaniiKodId = newKod.id.toString();
-        // Refresh the list
-        fetchBaraaniiKod();
-      } catch (err: any) {
-        setError(err.message || 'Барааны код үүсгэхэд алдаа гарлаа');
-        return;
-      }
-    } else {
-      if (!baraaniiKodId) {
-        setError('Барааны код сонгох шаардлагатай');
-        return;
-      }
-    }
-
-    try {
-      const response = await fetch('/api/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: phone.trim(),
-          baraanii_kod_id: parseInt(finalBaraaniiKodId),
-          color_id: colorId && colorId !== 'none' ? parseInt(colorId) : null,
-          size_id: sizeId && sizeId !== 'none' ? parseInt(sizeId) : null,
-          price: price ? parseFloat(price) : null,
-          feature: feature.trim() || null,
-          number: number ? parseInt(number) : null,
-          order_date: orderDate || null,
-          paid_date: paidDate || null,
-          received_date: receivedDate || null,
-          withDelivery,
-          comment: comment.trim() || null,
-          type: 2, // Order page creates type 2 orders
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to create');
-      }
-
-      resetForm();
-      setIsDialogOpen(false);
-      fetchOrders();
-    } catch (err: any) {
-      setError(err.message || 'Захиалга үүсгэхэд алдаа гарлаа');
-    }
-  };
-
-  // Update order
-  const handleUpdate = async () => {
-    if (!phone.trim() || !editingOrder) {
-      setError('Утасны дугаар оруулах шаардлагатай');
-      return;
-    }
-
-    if (!baraaniiKodId) {
-      setError('Барааны код сонгох шаардлагатай');
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/order/${editingOrder.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: phone.trim(),
-          baraanii_kod_id: parseInt(baraaniiKodId),
-          color_id: colorId && colorId !== 'none' ? parseInt(colorId) : null,
-          size_id: sizeId && sizeId !== 'none' ? parseInt(sizeId) : null,
-          price: price ? parseFloat(price) : null,
-          feature: feature.trim() || null,
-          number: number ? parseInt(number) : null,
-          order_date: orderDate || null,
-          paid_date: paidDate || null,
-          received_date: receivedDate || null,
-          withDelivery,
-          comment: comment.trim() || null,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to update');
-      }
-
-      resetForm();
-      setEditingOrder(null);
-      setIsDialogOpen(false);
-      fetchOrders();
-    } catch (err: any) {
-      setError(err.message || 'Захиалга засахдаа алдаа гарлаа');
-    }
-  };
-
-  // Delete order
-  const handleDelete = async (id: number) => {
-    if (!confirm('Та энэ захиалгыг устгахдаа итгэлтэй байна уу?')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/order/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete');
-      }
-
-      fetchOrders();
-    } catch (err) {
-      setError('Захиалга устгахад алдаа гарлаа');
-      console.error(err);
-    }
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('mn-MN');
-  };
-
-  const formatCurrency = (amount: number | null) => {
-    if (amount === null) return '-';
-    return new Intl.NumberFormat('mn-MN').format(amount);
-  };
 
   // Handle Excel import
   const handleExcelImport = () => {
@@ -409,7 +154,7 @@ export default function OrderPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/order/import', {
+      const response = await fetch('/api/live/import', {
         method: 'POST',
         body: formData,
       });
@@ -430,6 +175,16 @@ export default function OrderPage() {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('mn-MN');
+  };
+
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null) return '-';
+    return new Intl.NumberFormat('mn-MN').format(amount);
   };
 
   // Handle filter changes
@@ -548,8 +303,8 @@ export default function OrderPage() {
       }
     }
     
-    // Feature filter
-    if (filters.feature && !(order.feature || '').toLowerCase().includes(filters.feature.toLowerCase())) {
+    // Comment filter
+    if (filters.comment && !(order.comment || '').toLowerCase().includes(filters.comment.toLowerCase())) {
       return false;
     }
     
@@ -590,11 +345,27 @@ export default function OrderPage() {
       }
     }
     
-    // Order date filter (individual - only if date range is not active for this field)
-    if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'order_date') {
-      if (filters.order_date && order.order_date) {
-        const filterDate = new Date(filters.order_date);
-        const orderDate = new Date(order.order_date);
+    // Received date filter (individual - only if date range is not active for this field)
+    if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'received_date') {
+      if (filters.received_date && order.received_date) {
+        const filterDate = new Date(filters.received_date);
+        const orderDate = new Date(order.received_date);
+        // Compare only the date part (ignore time)
+        if (
+          filterDate.getFullYear() !== orderDate.getFullYear() ||
+          filterDate.getMonth() !== orderDate.getMonth() ||
+          filterDate.getDate() !== orderDate.getDate()
+        ) {
+          return false;
+        }
+      }
+    }
+    
+    // Delivered date filter (individual - only if date range is not active for this field)
+    if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'delivered_date') {
+      if (filters.delivered_date && order.delivered_date) {
+        const filterDate = new Date(filters.delivered_date);
+        const orderDate = new Date(order.delivered_date);
         // Compare only the date part (ignore time)
         if (
           filterDate.getFullYear() !== orderDate.getFullYear() ||
@@ -622,24 +393,8 @@ export default function OrderPage() {
       }
     }
     
-    // Received date filter (individual - only if date range is not active for this field)
-    if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'received_date') {
-      if (filters.received_date && order.received_date) {
-        const filterDate = new Date(filters.received_date);
-        const orderDate = new Date(order.received_date);
-        // Compare only the date part (ignore time)
-        if (
-          filterDate.getFullYear() !== orderDate.getFullYear() ||
-          filterDate.getMonth() !== orderDate.getMonth() ||
-          filterDate.getDate() !== orderDate.getDate()
-        ) {
-          return false;
-        }
-      }
-    }
-    
-    // Comment filter
-    if (filters.comment && !(order.comment || '').toLowerCase().includes(filters.comment.toLowerCase())) {
+    // Feature filter
+    if (filters.feature && !(order.feature || '').toLowerCase().includes(filters.feature.toLowerCase())) {
       return false;
     }
     
@@ -682,12 +437,106 @@ export default function OrderPage() {
     setCurrentPage(1);
   };
 
+  // Reset create form
+  const resetCreateForm = () => {
+    setPhone('');
+    setBaraaniiKodId('');
+    setNewBaraaniiKod('');
+    setIsNewBaraaniiKod(false);
+    setPrice('');
+    setComment('');
+    setNumber('');
+    setReceivedDate('');
+    setDeliveredDate('');
+    setPaidDate('');
+    setFeature('');
+    setError('');
+  };
+
+  // Open create dialog
+  const openCreateDialog = () => {
+    resetCreateForm();
+    setIsCreateDialogOpen(true);
+  };
+
+  // Create new order
+  const handleCreate = async () => {
+    if (!phone.trim()) {
+      setError('Утасны дугаар оруулах шаардлагатай');
+      return;
+    }
+
+    let finalBaraaniiKodId = baraaniiKodId;
+
+    // If creating new baraanii_kod
+    if (isNewBaraaniiKod) {
+      if (!newBaraaniiKod.trim()) {
+        setError('Барааны код оруулах шаардлагатай');
+        return;
+      }
+
+      try {
+        const createResponse = await fetch('/api/baraanii-kod', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kod: newBaraaniiKod.trim() }),
+        });
+
+        if (!createResponse.ok) {
+          const data = await createResponse.json();
+          throw new Error(data.error || 'Failed to create product code');
+        }
+
+        const newKod = await createResponse.json();
+        finalBaraaniiKodId = newKod.id.toString();
+        // Refresh the list
+        fetchBaraaniiKod();
+      } catch (err: any) {
+        setError(err.message || 'Барааны код үүсгэхэд алдаа гарлаа');
+        return;
+      }
+    } else {
+      if (!baraaniiKodId) {
+        setError('Барааны код сонгох шаардлагатай');
+        return;
+      }
+    }
+
+    try {
+      const response = await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          baraanii_kod_id: parseInt(finalBaraaniiKodId),
+          price: price ? parseFloat(price) : null,
+          comment: comment.trim() || null,
+          number: number ? parseInt(number) : null,
+          received_date: receivedDate || null,
+          delivered_date: deliveredDate || null,
+          paid_date: paidDate || null,
+          feature: feature.trim() || null,
+          type: 1, // Live page creates type 1 orders
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create');
+      }
+
+      resetCreateForm();
+      setIsCreateDialogOpen(false);
+      fetchOrders();
+    } catch (err: any) {
+      setError(err.message || 'Захиалга үүсгэхэд алдаа гарлаа');
+    }
+  };
+
   return (
     <div className="container mx-auto py-10 px-4">
       <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold">Захиалга</h1>
-        </div>
+        <h1 className="text-3xl font-bold mb-4">Live</h1>
         
         {/* Date Range Filter */}
         <div className="mb-4 p-4 border rounded-lg bg-muted/50">
@@ -704,9 +553,9 @@ export default function OrderPage() {
                   <SelectValue placeholder="Огнооны талбар сонгох" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="order_date">Захиалгын огноо</SelectItem>
-                  <SelectItem value="paid_date">Төлбөрийн огноо</SelectItem>
                   <SelectItem value="received_date">Ирж авсан огноо</SelectItem>
+                  <SelectItem value="delivered_date">Хүргэсэн огноо</SelectItem>
+                  <SelectItem value="paid_date">Гүйлгээний огноо</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -802,11 +651,192 @@ export default function OrderPage() {
         </div>
       </div>
 
-      {error && !isDialogOpen && (
+      {error && (
         <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md">
           {error}
         </div>
       )}
+
+      {/* Create Order Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Шинэ захиалга нэмэх</DialogTitle>
+            <DialogDescription>
+              Шинэ захиалгын мэдээллийг оруулна уу
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {error && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="phone">
+                  Утасны дугаар <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="phone"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="Утасны дугаар оруулна уу"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="baraaniiKod">
+                  Барааны код <span className="text-destructive">*</span>
+                </Label>
+                <div className="flex items-center space-x-2 mb-2">
+                  <Checkbox
+                    id="newBaraaniiKod"
+                    checked={isNewBaraaniiKod}
+                    onCheckedChange={(checked: boolean) => {
+                      setIsNewBaraaniiKod(checked === true);
+                      setBaraaniiKodId('');
+                      setNewBaraaniiKod('');
+                      setError('');
+                    }}
+                  />
+                  <Label
+                    htmlFor="newBaraaniiKod"
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    Шинэ барааны код нэмэх
+                  </Label>
+                </div>
+                {isNewBaraaniiKod ? (
+                  <Input
+                    id="newBaraaniiKod"
+                    value={newBaraaniiKod}
+                    onChange={(e) => {
+                      setNewBaraaniiKod(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="Шинэ барааны код оруулна уу"
+                  />
+                ) : (
+                  <Select
+                    value={baraaniiKodId}
+                    onValueChange={(value: string) => {
+                      setBaraaniiKodId(value);
+                      setError('');
+                    }}
+                  >
+                    <SelectTrigger id="baraaniiKod">
+                      <SelectValue placeholder="Барааны код сонгоно уу" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {baraaniiKodList.map((bk) => (
+                        <SelectItem key={bk.id} value={bk.id.toString()}>
+                          {bk.kod}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="price">Үнэ</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Үнэ оруулна уу"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="number">Тоо ширхэг</Label>
+                <Input
+                  id="number"
+                  type="number"
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                  placeholder="Тоо ширхэг оруулна уу"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="feature">Онцлог</Label>
+              <Textarea
+                id="feature"
+                value={feature}
+                onChange={(e) => setFeature(e.target.value)}
+                placeholder="Онцлог оруулна уу"
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="receivedDate">Ирж авсан огноо</Label>
+                <Input
+                  id="receivedDate"
+                  type="date"
+                  value={receivedDate}
+                  onChange={(e) => setReceivedDate(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="deliveredDate">Хүргэсэн огноо</Label>
+                <Input
+                  id="deliveredDate"
+                  type="date"
+                  value={deliveredDate}
+                  onChange={(e) => setDeliveredDate(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="paidDate">Гүйлгээний огноо</Label>
+                <Input
+                  id="paidDate"
+                  type="date"
+                  value={paidDate}
+                  onChange={(e) => setPaidDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="comment">Тайлбар</Label>
+              <Textarea
+                id="comment"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Тайлбар оруулна уу"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                resetCreateForm();
+              }}
+            >
+              Цуцлах
+            </Button>
+            <Button onClick={handleCreate}>Нэмэх</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Change Modal */}
       <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
@@ -857,7 +887,6 @@ export default function OrderPage() {
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
-              <TableHead className="w-[50px]">ID</TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
                   <span>Утас</span>
@@ -871,7 +900,7 @@ export default function OrderPage() {
               </TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Барааны код</span>
+                  <span>Код</span>
                   <Input
                     placeholder="Шүүх..."
                     value={filters.kod}
@@ -893,11 +922,11 @@ export default function OrderPage() {
               </TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Онцлог</span>
+                  <span>Тайлбар</span>
                   <Input
                     placeholder="Шүүх..."
-                    value={filters.feature}
-                    onChange={(e) => handleFilterChange('feature', e.target.value)}
+                    value={filters.comment}
+                    onChange={(e) => handleFilterChange('comment', e.target.value)}
                     className="h-8 text-xs"
                   />
                 </div>
@@ -915,18 +944,19 @@ export default function OrderPage() {
               </TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Захиалгын огноо</span>
+                  <span>Ирж авсан огноо</span>
                   <Input
                     type="date"
-                    value={filters.order_date}
-                    onChange={(e) => handleFilterChange('order_date', e.target.value)}
+                    value={filters.received_date}
+                    onChange={(e) => handleFilterChange('received_date', e.target.value)}
                     className="h-8 text-xs"
                   />
                 </div>
               </TableHead>
+             
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Төлбөрийн огноо</span>
+                  <span>Гүйлгээний огноо</span>
                   <Input
                     type="date"
                     value={filters.paid_date}
@@ -937,41 +967,33 @@ export default function OrderPage() {
               </TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Ирж авсан огноо</span>
-                  <Input
-                    type="date"
-                    value={filters.received_date}
-                    onChange={(e) => handleFilterChange('received_date', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>Хүргэлттэй</TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Тайлбар</span>
+                  <span>Нэмэлт тайлбар</span>
                   <Input
                     placeholder="Шүүх..."
-                    value={filters.comment}
-                    onChange={(e) => handleFilterChange('comment', e.target.value)}
+                    value={filters.feature}
+                    onChange={(e) => handleFilterChange('feature', e.target.value)}
                     className="h-8 text-xs"
                   />
                 </div>
               </TableHead>
-              <TableHead className="w-[150px]">Үйлдэл</TableHead>
+              <TableHead>
+                <div className="flex flex-col gap-1">
+                  <span>Төлөв</span>
+                </div>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={14} className="text-center py-8">
+                <TableCell colSpan={11} className="text-center py-8">
                   Ачааллаж байна...
                 </TableCell>
               </TableRow>
             ) : filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={14}
+                  colSpan={11}
                   className="text-center py-8 text-muted-foreground"
                 >
                   Мэдээлэл олдсонгүй
@@ -979,9 +1001,9 @@ export default function OrderPage() {
               </TableRow>
             ) : (
               paginatedOrders.map((order) => (
-                <TableRow 
+                <TableRow
                   key={order.id}
-                  className={order.status ? getStatusColor(order.status) : ''}
+                  className={getStatusColor(order.status || 1)}
                 >
                   <TableCell>
                     <Checkbox
@@ -991,42 +1013,32 @@ export default function OrderPage() {
                       }
                     />
                   </TableCell>
-                  <TableCell>{order.id}</TableCell>
                   <TableCell className="font-medium">{order.phone}</TableCell>
                   <TableCell>
-                    {order.baraanii_kod_name || `ID: ${order.baraanii_kod_id}`}
+                    {order.baraanii_kod_name || '-'}
                   </TableCell>
                   <TableCell>{formatCurrency(order.price)}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
-                    {order.feature || '-'}
-                  </TableCell>
-                  <TableCell>{order.number || '-'}</TableCell>
-                  <TableCell>{formatDate(order.order_date)}</TableCell>
-                  <TableCell>{formatDate(order.paid_date)}</TableCell>
-                  <TableCell>{formatDate(order.received_date)}</TableCell>
-                  <TableCell>
-                    {order.with_delivery ? 'Тийм' : 'Үгүй'}
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate">
                     {order.comment || '-'}
                   </TableCell>
+                  <TableCell>{order.number || '-'}</TableCell>
+                  <TableCell>{formatDate(order.received_date)}</TableCell>
+                  <TableCell>{formatDate(order.paid_date)}</TableCell>
+                  <TableCell className="max-w-[200px] truncate">
+                    {order.feature || '-'}
+                  </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDialog(order)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDelete(order.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        order.status === 1
+                          ? 'bg-blue-100 text-blue-800'
+                          : order.status === 2
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}
+                    >
+                      {getStatusLabel(order.status || 1)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))
@@ -1088,258 +1100,6 @@ export default function OrderPage() {
           </div>
         </div>
       )}
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingOrder ? 'Захиалга засах' : 'Шинэ захиалга нэмэх'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingOrder
-                ? 'Захиалгын мэдээллийг засварлана уу'
-                : 'Шинэ захиалгын мэдээллийг оруулна уу'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {error && (
-              <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                {error}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="phone">
-                  Утасны дугаар <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="phone"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="Утасны дугаар оруулна уу"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="baraaniiKod">
-                  Барааны код <span className="text-destructive">*</span>
-                </Label>
-                {!editingOrder && (
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Checkbox
-                      id="newBaraaniiKod"
-                      checked={isNewBaraaniiKod}
-                      onCheckedChange={(checked: boolean) => {
-                        setIsNewBaraaniiKod(checked === true);
-                        setBaraaniiKodId('');
-                        setNewBaraaniiKod('');
-                        setError('');
-                      }}
-                    />
-                    <Label
-                      htmlFor="newBaraaniiKod"
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      Шинэ барааны код нэмэх
-                    </Label>
-                  </div>
-                )}
-                {isNewBaraaniiKod && !editingOrder ? (
-                  <Input
-                    id="newBaraaniiKod"
-                    value={newBaraaniiKod}
-                    onChange={(e) => {
-                      setNewBaraaniiKod(e.target.value);
-                      setError('');
-                    }}
-                    placeholder="Шинэ барааны код оруулна уу"
-                  />
-                ) : (
-                  <Select
-                    value={baraaniiKodId}
-                    onValueChange={(value: string) => {
-                      setBaraaniiKodId(value);
-                      setError('');
-                    }}
-                  >
-                    <SelectTrigger id="baraaniiKod">
-                      <SelectValue placeholder="Барааны код сонгоно уу" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {baraaniiKodList.map((bk) => (
-                        <SelectItem key={bk.id} value={bk.id.toString()}>
-                          {bk.kod}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="color">Өнгө</Label>
-                <Select
-                  value={colorId}
-                  onValueChange={(value: string) => {
-                    setColorId(value);
-                    setError('');
-                  }}
-                >
-                  <SelectTrigger id="color">
-                    <SelectValue placeholder="Өнгө сонгоно уу" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Өнгө сонгохгүй</SelectItem>
-                    {colorsList.map((color) => (
-                      <SelectItem key={color.id} value={color.id.toString()}>
-                        {color.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="size">Хэмжээ</Label>
-                <Select
-                  value={sizeId}
-                  onValueChange={(value: string) => {
-                    setSizeId(value);
-                    setError('');
-                  }}
-                >
-                  <SelectTrigger id="size">
-                    <SelectValue placeholder="Хэмжээ сонгоно уу" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Хэмжээ сонгохгүй</SelectItem>
-                    {sizesList.map((size) => (
-                      <SelectItem key={size.id} value={size.id.toString()}>
-                        {size.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="price">Үнэ</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="Үнэ оруулна уу"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="number">Тоо ширхэг</Label>
-                <Input
-                  id="number"
-                  type="number"
-                  value={number}
-                  onChange={(e) => setNumber(e.target.value)}
-                  placeholder="Тоо ширхэг оруулна уу"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="feature">Онцлог</Label>
-              <Textarea
-                id="feature"
-                value={feature}
-                onChange={(e) => setFeature(e.target.value)}
-                placeholder="Онцлог оруулна уу"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="orderDate">Захиалгын огноо</Label>
-                <Input
-                  id="orderDate"
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="paidDate">Төлбөрийн огноо</Label>
-                <Input
-                  id="paidDate"
-                  type="date"
-                  value={paidDate}
-                  onChange={(e) => setPaidDate(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="receivedDate">Ирж авсан огноо</Label>
-                <Input
-                  id="receivedDate"
-                  type="date"
-                  value={receivedDate}
-                  onChange={(e) => setReceivedDate(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="withDelivery"
-                checked={withDelivery}
-                onCheckedChange={(checked: boolean) =>
-                  setWithDelivery(checked === true)
-                }
-              />
-              <Label
-                htmlFor="withDelivery"
-                className="text-sm font-normal cursor-pointer"
-              >
-                Хүргэлттэй
-              </Label>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="comment">Тайлбар</Label>
-              <Textarea
-                id="comment"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Тайлбар оруулна уу"
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsDialogOpen(false);
-                resetForm();
-              }}
-            >
-              Цуцлах
-            </Button>
-            <Button onClick={editingOrder ? handleUpdate : handleCreate}>
-              {editingOrder ? 'Хадгалах' : 'Нэмэх'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

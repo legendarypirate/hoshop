@@ -2,19 +2,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
 // GET - Fetch all orders
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const result = await pool.query(`
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get('type');
+    
+    let query = `
       SELECT o.*, 
         bk.kod as baraanii_kod_name,
         c.name as color_name,
-        s.name as size_name
+        s.name as size_name,
+        COALESCE(o.status, 1) as status
       FROM order_table o
       LEFT JOIN baraanii_kod bk ON o.baraanii_kod_id = bk.id
       LEFT JOIN colors c ON o.color_id = c.id
       LEFT JOIN sizes s ON o.size_id = s.id
-      ORDER BY o.order_date DESC, o.created_at DESC
-    `);
+    `;
+    
+    const queryParams: any[] = [];
+    if (type) {
+      query += ` WHERE o.type = $1`;
+      queryParams.push(parseInt(type));
+    }
+    
+    query += ` ORDER BY o.order_date DESC, o.created_at DESC`;
+    
+    const result = await pool.query(query, queryParams);
     return NextResponse.json(result.rows);
   } catch (error) {
     console.error('Error fetching orders:', error);
@@ -42,6 +55,7 @@ export async function POST(request: NextRequest) {
       received_date,
       withDelivery,
       comment,
+      type,
     } = body;
 
     if (!phone || phone.trim() === '') {
@@ -58,11 +72,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Default to type 1 if not provided
+    const orderType = type || 1;
+
     const result = await pool.query(
       `INSERT INTO order_table (
         phone, baraanii_kod_id, color_id, size_id, price, feature, number, 
-        order_date, paid_date, received_date, with_delivery, comment
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        order_date, paid_date, received_date, with_delivery, comment, type
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         phone.trim(),
         baraanii_kod_id,
@@ -76,6 +93,7 @@ export async function POST(request: NextRequest) {
         received_date || null,
         withDelivery || false,
         comment || null,
+        orderType,
       ]
     );
 

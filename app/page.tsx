@@ -1,3 +1,7 @@
+'use client';
+
+import Link from 'next/link';
+
 export default function Home() {
   return (
     <div className="container mx-auto py-10 px-4">
@@ -10,26 +14,27 @@ export default function Home() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-8">
-          <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Барааны код</h3>
-            <p className="text-sm text-muted-foreground">
-              Барааны кодыг удирдах, нэмэх, засах, устгах
-            </p>
-          </div>
+        
 
-          <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Бараа</h3>
+          <Link 
+            href="/order"
+            className="border rounded-lg p-6 hover:bg-accent transition-colors cursor-pointer"
+          >
+            <h3 className="text-lg font-semibold mb-2">Захиалга</h3>
             <p className="text-sm text-muted-foreground">
-              Барааны мэдээллийг удирдах
+              Захиалгын мэдээллийг харах, удирдах
             </p>
-          </div>
+          </Link>
 
-          <div className="border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Хэрэглэгчид</h3>
+          <Link 
+            href="/live"
+            className="border rounded-lg p-6 hover:bg-accent transition-colors cursor-pointer"
+          >
+            <h3 className="text-lg font-semibold mb-2">Live</h3>
             <p className="text-sm text-muted-foreground">
-              Хэрэглэгчийн мэдээллийг удирдах
+              Live мэдээлэл харах
             </p>
-          </div>
+          </Link>
         </div>
       </div>
     </div>

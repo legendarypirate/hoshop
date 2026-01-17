@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "setup-db": "node scripts/setup-db.js",
-    "init-admin": "tsx scripts/init-admin.ts"
+    "init-admin": "tsx scripts/init-admin.ts",
+    "add-type-column": "tsx scripts/add-type-column.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -26,7 +27,8 @@
     "pg": "^8.16.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -34,6 +36,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xlsx": "^0.0.35",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",

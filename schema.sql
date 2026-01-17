@@ -51,7 +51,16 @@ CREATE TABLE IF NOT EXISTS sizes (
 ALTER TABLE order_table 
   ADD COLUMN IF NOT EXISTS color_id INTEGER REFERENCES colors(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS size_id INTEGER REFERENCES sizes(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS received_date DATE;
+  ADD COLUMN IF NOT EXISTS received_date DATE,
+  ADD COLUMN IF NOT EXISTS delivered_date DATE;
+
+-- Add status column to order_table (1 = шинэ үүссэн, 2 = ирж авсан, 3 = хүргэлтгэнд гаргасан)
+ALTER TABLE order_table 
+  ADD COLUMN IF NOT EXISTS status INTEGER DEFAULT 1;
+
+-- Add type column to order_table (1 = live menu, 2 = order menu)
+ALTER TABLE order_table 
+  ADD COLUMN IF NOT EXISTS type INTEGER DEFAULT 1;
 
 -- Create table for items (бараа) - tracks inventory balances
 CREATE TABLE IF NOT EXISTS items (
@@ -76,5 +85,15 @@ CREATE TABLE IF NOT EXISTS item_movements (
   quantity INTEGER NOT NULL,
   action_description TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create junction table for baraanii_kod colors and sizes
+CREATE TABLE IF NOT EXISTS baraanii_kod_options (
+  id SERIAL PRIMARY KEY,
+  baraanii_kod_id INTEGER NOT NULL REFERENCES baraanii_kod(id) ON DELETE CASCADE,
+  color_id INTEGER REFERENCES colors(id) ON DELETE CASCADE,
+  size_id INTEGER REFERENCES sizes(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(baraanii_kod_id, color_id, size_id)
 );
 
