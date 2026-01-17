@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Find or create baraanii_kod
-        let baraaniiKodId = kodMap.get(kod.toLowerCase());
+        let baraaniiKodId: number | undefined = kodMap.get(kod.toLowerCase());
         if (!baraaniiKodId) {
           // Create new baraanii_kod
           const insertResult = await pool.query(
@@ -224,7 +224,14 @@ export async function POST(request: NextRequest) {
             continue;
           }
           baraaniiKodId = newId;
-          kodMap.set(kod.toLowerCase(), baraaniiKodId);
+          kodMap.set(kod.toLowerCase(), newId);
+        }
+
+        // Ensure baraaniiKodId is defined before proceeding
+        if (baraaniiKodId === undefined) {
+          results.failed++;
+          results.errors.push(`Мөр ${rowNum}: Барааны код олдсонгүй`);
+          continue;
         }
 
         // Parse price (handle "189k", "196k" format)
