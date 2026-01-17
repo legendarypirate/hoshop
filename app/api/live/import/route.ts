@@ -217,7 +217,13 @@ export async function POST(request: NextRequest) {
             'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
             [kod]
           );
-          baraaniiKodId = insertResult.rows[0].id;
+          const newId = insertResult.rows[0]?.id;
+          if (newId === undefined) {
+            results.failed++;
+            results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа гарлаа`);
+            continue;
+          }
+          baraaniiKodId = newId;
           kodMap.set(kod.toLowerCase(), baraaniiKodId);
         }
 
