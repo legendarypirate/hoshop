@@ -172,8 +172,21 @@ export async function POST(request: NextRequest) {
             'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
             [kod]
           );
-          baraaniiKodId = insertResult.rows[0].id;
-          kodMap.set(kod.toLowerCase(), baraaniiKodId);
+          const newId = insertResult.rows[0]?.id;
+          if (newId === undefined) {
+            results.failed++;
+            results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа гарлаа`);
+            continue;
+          }
+          baraaniiKodId = newId;
+          kodMap.set(kod.toLowerCase(), newId);
+        }
+        
+        // At this point, baraaniiKodId is guaranteed to be a number
+        if (baraaniiKodId === undefined) {
+          results.failed++;
+          results.errors.push(`Мөр ${rowNum}: Барааны код олдсонгүй`);
+          continue;
         }
 
         // Parse price
