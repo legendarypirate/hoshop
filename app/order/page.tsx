@@ -59,8 +59,8 @@ interface Order {
   feature: string | null;
   number: number | null;
   order_date: string | null;
-  paid_date: string | null;
   received_date: string | null;
+  paid_date: string | null;
   with_delivery: boolean;
   comment: string | null;
   status?: number;
@@ -94,14 +94,13 @@ export default function OrderPage() {
     feature: '',
     number: '',
     order_date: '',
-    paid_date: '',
     received_date: '',
     comment: '',
   });
 
   // Date range filter states
   const [dateRangeFilter, setDateRangeFilter] = useState({
-    dateField: '' as 'order_date' | 'paid_date' | 'received_date' | '',
+    dateField: '' as 'order_date' | 'received_date' | '',
     startDate: '',
     endDate: '',
   });
@@ -117,8 +116,8 @@ export default function OrderPage() {
   const [feature, setFeature] = useState('');
   const [number, setNumber] = useState('');
   const [orderDate, setOrderDate] = useState('');
-  const [paidDate, setPaidDate] = useState('');
   const [receivedDate, setReceivedDate] = useState('');
+  const [statusChangeDate, setStatusChangeDate] = useState('');
   const [withDelivery, setWithDelivery] = useState(false);
   const [comment, setComment] = useState('');
 
@@ -193,7 +192,6 @@ export default function OrderPage() {
     setFeature('');
     setNumber('');
     setOrderDate('');
-    setPaidDate('');
     setReceivedDate('');
     setWithDelivery(false);
     setComment('');
@@ -219,7 +217,6 @@ export default function OrderPage() {
     setFeature(order.feature || '');
     setNumber(order.number?.toString() || '');
     setOrderDate(order.order_date || '');
-    setPaidDate(order.paid_date || '');
     setReceivedDate(order.received_date || '');
     setWithDelivery(order.with_delivery);
     setComment(order.comment || '');
@@ -283,7 +280,6 @@ export default function OrderPage() {
           feature: feature.trim() || null,
           number: number ? parseInt(number) : null,
           order_date: orderDate || null,
-          paid_date: paidDate || null,
           received_date: receivedDate || null,
           withDelivery,
           comment: comment.trim() || null,
@@ -329,7 +325,6 @@ export default function OrderPage() {
           feature: feature.trim() || null,
           number: number ? parseInt(number) : null,
           order_date: orderDate || null,
-          paid_date: paidDate || null,
           received_date: receivedDate || null,
           withDelivery,
           comment: comment.trim() || null,
@@ -471,6 +466,12 @@ export default function OrderPage() {
       return;
     }
 
+    // If status is 3 (хүргэлтэнд гарсна), date is required
+    if (newStatus === 3 && !statusChangeDate) {
+      setError('Хүргэлтэнд гарсна төлөвт шилжүүлэхдээ огноо оруулах шаардлагатай');
+      return;
+    }
+
     try {
       const response = await fetch('/api/order/status', {
         method: 'PUT',
@@ -480,6 +481,7 @@ export default function OrderPage() {
         body: JSON.stringify({
           orderIds: Array.from(selectedOrders),
           status: newStatus,
+          date: newStatus === 3 ? statusChangeDate : undefined,
         }),
       });
 
@@ -492,6 +494,7 @@ export default function OrderPage() {
       setSelectedOrders(new Set());
       setShowStatusModal(false);
       setNewStatus(1);
+      setStatusChangeDate('');
     } catch (err: any) {
       setError(err.message || 'Төлөв шинэчлэхэд алдаа гарлаа');
     }
@@ -501,11 +504,11 @@ export default function OrderPage() {
   const getStatusColor = (status: number) => {
     switch (status) {
       case 1: // шинэ үүссэн
-        return 'bg-blue-50 hover:bg-blue-100';
+        return 'bg-blue-300 hover:bg-blue-400';
       case 2: // ирж авсан
         return 'bg-green-50 hover:bg-green-100';
       case 3: // хүргэлтгэнд гаргасан
-        return 'bg-yellow-50 hover:bg-yellow-100';
+        return 'bg-yellow-300 hover:bg-yellow-400';
       default:
         return '';
     }
@@ -594,28 +597,12 @@ export default function OrderPage() {
     if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'order_date') {
       if (filters.order_date && order.order_date) {
         const filterDate = new Date(filters.order_date);
-        const orderDate = new Date(order.order_date);
+        const orderDateValue = new Date(order.order_date);
         // Compare only the date part (ignore time)
         if (
-          filterDate.getFullYear() !== orderDate.getFullYear() ||
-          filterDate.getMonth() !== orderDate.getMonth() ||
-          filterDate.getDate() !== orderDate.getDate()
-        ) {
-          return false;
-        }
-      }
-    }
-    
-    // Paid date filter (individual - only if date range is not active for this field)
-    if (!dateRangeFilter.dateField || dateRangeFilter.dateField !== 'paid_date') {
-      if (filters.paid_date && order.paid_date) {
-        const filterDate = new Date(filters.paid_date);
-        const orderDate = new Date(order.paid_date);
-        // Compare only the date part (ignore time)
-        if (
-          filterDate.getFullYear() !== orderDate.getFullYear() ||
-          filterDate.getMonth() !== orderDate.getMonth() ||
-          filterDate.getDate() !== orderDate.getDate()
+          filterDate.getFullYear() !== orderDateValue.getFullYear() ||
+          filterDate.getMonth() !== orderDateValue.getMonth() ||
+          filterDate.getDate() !== orderDateValue.getDate()
         ) {
           return false;
         }
@@ -705,7 +692,6 @@ export default function OrderPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="order_date">Захиалгын огноо</SelectItem>
-                  <SelectItem value="paid_date">Төлбөрийн огноо</SelectItem>
                   <SelectItem value="received_date">Ирж авсан огноо</SelectItem>
                 </SelectContent>
               </Select>
@@ -817,24 +803,47 @@ export default function OrderPage() {
               {selectedOrders.size} захиалгын төлөв өөрчлөх
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="status-select">Шинэ төлөв</Label>
-            <Select
-              value={String(newStatus)}
-              onValueChange={(value) => setNewStatus(parseInt(value))}
-            >
-              <SelectTrigger id="status-select" className="mt-2">
-                <SelectValue placeholder="Төлөв сонгох" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Шинэ үүссэн</SelectItem>
-                <SelectItem value="2">Ирж авсан</SelectItem>
-                <SelectItem value="3">Хүргэлтгэнд гаргасан</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="status-select">Шинэ төлөв</Label>
+              <Select
+                value={String(newStatus)}
+                onValueChange={(value) => {
+                  setNewStatus(parseInt(value));
+                  if (parseInt(value) !== 3) {
+                    setStatusChangeDate('');
+                  }
+                }}
+              >
+                <SelectTrigger id="status-select" className="mt-2">
+                  <SelectValue placeholder="Төлөв сонгох" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Шинэ үүссэн</SelectItem>
+                  <SelectItem value="2">Ирж авсан</SelectItem>
+                  <SelectItem value="3">Хүргэлтгэнд гаргасан</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {newStatus === 3 && (
+              <div>
+                <Label htmlFor="status-date">Ирж авсан огноо <span className="text-destructive">*</span></Label>
+                <Input
+                  id="status-date"
+                  type="date"
+                  value={statusChangeDate}
+                  onChange={(e) => setStatusChangeDate(e.target.value)}
+                  className="mt-2"
+                  required
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowStatusModal(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowStatusModal(false);
+              setStatusChangeDate('');
+            }}>
               Цуцлах
             </Button>
             <Button onClick={handleStatusChange}>Хадгалах</Button>
@@ -915,33 +924,22 @@ export default function OrderPage() {
               </TableHead>
               <TableHead>
                 <div className="flex flex-col gap-1">
-                  <span>Захиалгын огноо</span>
-                  <Input
-                    type="date"
-                    value={filters.order_date}
-                    onChange={(e) => handleFilterChange('order_date', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Төлбөрийн огноо</span>
-                  <Input
-                    type="date"
-                    value={filters.paid_date}
-                    onChange={(e) => handleFilterChange('paid_date', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
                   <span>Ирж авсан огноо</span>
                   <Input
                     type="date"
                     value={filters.received_date}
                     onChange={(e) => handleFilterChange('received_date', e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </TableHead>
+              <TableHead>
+                <div className="flex flex-col gap-1">
+                  <span>Захиалгын огноо</span>
+                  <Input
+                    type="date"
+                    value={filters.order_date}
+                    onChange={(e) => handleFilterChange('order_date', e.target.value)}
                     className="h-8 text-xs"
                   />
                 </div>
@@ -958,20 +956,25 @@ export default function OrderPage() {
                   />
                 </div>
               </TableHead>
+              <TableHead>
+                <div className="flex flex-col gap-1">
+                  <span>Төлбөрийн огноо</span>
+                </div>
+              </TableHead>
               <TableHead className="w-[150px]">Үйлдэл</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={14} className="text-center py-8">
+                <TableCell colSpan={15} className="text-center py-8">
                   Ачааллаж байна...
                 </TableCell>
               </TableRow>
             ) : filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={14}
+                  colSpan={15}
                   className="text-center py-8 text-muted-foreground"
                 >
                   Мэдээлэл олдсонгүй
@@ -1001,14 +1004,28 @@ export default function OrderPage() {
                     {order.feature || '-'}
                   </TableCell>
                   <TableCell>{order.number || '-'}</TableCell>
-                  <TableCell>{formatDate(order.order_date)}</TableCell>
-                  <TableCell>{formatDate(order.paid_date)}</TableCell>
-                  <TableCell>{formatDate(order.received_date)}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded ${
+                        order.status === 3
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {formatDate(order.received_date)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {formatDate(order.order_date)}
+                  </TableCell>
                   <TableCell>
                     {order.with_delivery ? 'Тийм' : 'Үгүй'}
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate">
                     {order.comment || '-'}
+                  </TableCell>
+                  <TableCell>
+                    {formatDate(order.paid_date)}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
@@ -1265,7 +1282,7 @@ export default function OrderPage() {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="orderDate">Захиалгын огноо</Label>
                 <Input
@@ -1273,16 +1290,6 @@ export default function OrderPage() {
                   type="date"
                   value={orderDate}
                   onChange={(e) => setOrderDate(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="paidDate">Төлбөрийн огноо</Label>
-                <Input
-                  id="paidDate"
-                  type="date"
-                  value={paidDate}
-                  onChange={(e) => setPaidDate(e.target.value)}
                 />
               </div>
 

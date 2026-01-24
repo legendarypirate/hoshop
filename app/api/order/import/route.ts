@@ -46,8 +46,7 @@ async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<str
       feature: ['тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar', 'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'],
       comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'],
       number: ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER'],
-      order_date: ['Гүйлгээ хийсэн огноо', 'гүйлгээ хийсэн огноо', 'ГҮЙЛГЭЭ ХИЙСЭН ОГНОО', 'Захиалгын огноо', 'order_date', 'Order Date', 'захиалгын огноо'],
-      paid_date: ['Тоо өгсөн огноо', 'тоо өгсөн огноо', 'ТОО ӨГСӨН ОГНОО', 'Төлбөрийн огноо', 'paid_date', 'Paid Date', 'төлбөрийн огноо'],
+      order_date: ['Захиалгын огноо', 'захиалгын огноо', 'ЗАХИАЛГЫН ОГНОО', 'order_date', 'Order Date', 'order date', 'Order date', 'ORDER_DATE'],
       received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
       with_delivery: ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй'],
     };
@@ -186,7 +185,6 @@ export async function POST(request: NextRequest) {
         const comment = String(getMappedValue('comment') || '').trim() || null;
         const number = getMappedValue('number');
         const orderDate = getMappedValue('order_date');
-        const paidDate = getMappedValue('paid_date');
         const receivedDate = getMappedValue('received_date');
         const withDeliveryValue = getMappedValue('with_delivery');
 
@@ -304,7 +302,6 @@ export async function POST(request: NextRequest) {
         const parsedPrice = parsePrice(price);
         const parsedNumber = number ? parseInt(String(number)) : null;
         const parsedOrderDate = parseDate(orderDate);
-        const parsedPaidDate = parseDate(paidDate);
         const parsedReceivedDate = parseDate(receivedDate);
         const withDelivery = withDeliveryValue ? 
           (String(withDeliveryValue).toLowerCase() === 'тийм' || 
@@ -316,8 +313,8 @@ export async function POST(request: NextRequest) {
         await pool.query(
           `INSERT INTO order_table (
             phone, baraanii_kod_id, price, comment, number,
-            order_date, paid_date, received_date, feature, with_delivery, status, type
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            order_date, received_date, feature, with_delivery, status, type
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             phone,
             baraaniiKodId,
@@ -325,7 +322,6 @@ export async function POST(request: NextRequest) {
             comment,
             parsedNumber,
             parsedOrderDate,
-            parsedPaidDate,
             parsedReceivedDate,
             feature,
             withDelivery,

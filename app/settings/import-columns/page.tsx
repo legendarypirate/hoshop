@@ -53,8 +53,8 @@ const LIVE_FIELDS = [
   { name: 'price', label: 'Үнэ', required: false },
   { name: 'comment', label: 'Тайлбар', required: false },
   { name: 'number', label: 'Тоо ширхэг', required: false },
+  { name: 'order_date', label: 'Захиалгын огноо', required: false },
   { name: 'received_date', label: 'Ирж авсан огноо', required: false },
-  { name: 'delivered_date', label: 'Хүргэсэн огноо', required: false },
   { name: 'paid_date', label: 'Гүйлгээний огноо', required: false },
   { name: 'feature', label: 'Нэмэлт тайлбар', required: false },
 ];
@@ -252,7 +252,6 @@ export default function ImportColumnsSettingsPage() {
       comment: ['Тайлбар', 'comment', 'Comment', 'тайлбар'],
       number: ['Тоо', 'Тоо ширхэг', 'number', 'Number', 'тоо'],
       received_date: ['Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
-      delivered_date: ['Хүргэлттэй', 'Хүргэсэн огноо', 'delivered_date', 'Delivered Date', 'хүргэлттэй'],
       paid_date: ['Гүйлгээ хйисэн огноо', 'Гүйлгээний огноо', 'paid_date', 'Paid Date', 'Төлбөрийн огноо'],
       feature: ['Нэмэлт тайлбар', 'feature', 'Feature', 'Онцлог', 'нэмэлт тайлбар'],
       order_date: ['Гүйлгээ хийсэн огноо', 'гүйлгээ хийсэн огноо', 'Захиалгын огноо', 'order_date'],
