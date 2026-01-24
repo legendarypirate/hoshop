@@ -11,8 +11,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Upload, Plus } from 'lucide-react';
+import { Upload, Plus, GripVertical } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Select,
   SelectContent,
@@ -43,6 +60,88 @@ interface LiveOrder {
   paid_date: string | null;
   feature: string | null;
   status: number;
+}
+
+// Sortable Row Component
+function SortableRow({ 
+  order, 
+  selectedOrders, 
+  handleCheckboxChange, 
+  getStatusColor, 
+  getStatusLabel, 
+  formatCurrency, 
+  formatDate 
+}: {
+  order: LiveOrder;
+  selectedOrders: Set<number>;
+  handleCheckboxChange: (orderId: number, checked: boolean) => void;
+  getStatusColor: (status: number) => string;
+  getStatusLabel: (status: number) => string;
+  formatCurrency: (amount: number | null) => string;
+  formatDate: (dateString: string | null) => string;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: order.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={getStatusColor(order.status || 1)}
+    >
+      <TableCell className="w-8 cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </TableCell>
+      <TableCell>
+        <Checkbox
+          checked={selectedOrders.has(order.id)}
+          onCheckedChange={(checked) =>
+            handleCheckboxChange(order.id, checked as boolean)
+          }
+        />
+      </TableCell>
+      <TableCell className="font-medium">{order.phone}</TableCell>
+      <TableCell>
+        {order.baraanii_kod_name || '-'}
+      </TableCell>
+      <TableCell>{formatCurrency(order.price)}</TableCell>
+      <TableCell className="max-w-[200px] truncate">
+        {order.comment || '-'}
+      </TableCell>
+      <TableCell>{order.number || '-'}</TableCell>
+      <TableCell>{formatDate(order.received_date)}</TableCell>
+      <TableCell>{formatDate(order.delivered_date)}</TableCell>
+      <TableCell>{formatDate(order.paid_date)}</TableCell>
+      <TableCell className="max-w-[200px] truncate">
+        {order.feature || '-'}
+      </TableCell>
+      <TableCell>
+        <span
+          className={`px-2 py-1 rounded text-xs font-medium ${
+            order.status === 1
+              ? 'bg-blue-100 text-blue-800'
+              : order.status === 2
+              ? 'bg-green-100 text-green-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}
+        >
+          {getStatusLabel(order.status || 1)}
+        </span>
+      </TableCell>
+    </TableRow>
+  );
 }
 
 export default function LivePage() {
@@ -93,6 +192,14 @@ export default function LivePage() {
     startDate: '',
     endDate: '',
   });
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Fetch all orders
   const fetchOrders = async () => {
@@ -416,6 +523,58 @@ export default function LivePage() {
   // Handle page change
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+  };
+
+  // Handle drag end for reordering
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = paginatedOrders.findIndex((order) => order.id === active.id);
+    const newIndex = paginatedOrders.findIndex((order) => order.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Update local state optimistically
+    const newOrders = arrayMove(paginatedOrders, oldIndex, newIndex);
+    const allOrderIds = newOrders.map((order) => order.id);
+
+    // Update the full orders array to maintain the new order
+    const orderMap = new Map(orders.map((o) => [o.id, o]));
+    const reorderedFullOrders = allOrderIds
+      .map((id) => orderMap.get(id))
+      .filter((o): o is LiveOrder => o !== undefined)
+      .concat(orders.filter((o) => !allOrderIds.includes(o.id)));
+
+    setOrders(reorderedFullOrders);
+
+    // Save to backend
+    try {
+      const response = await fetch('/api/live/reorder', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: allOrderIds,
+        }),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        await fetchOrders();
+        setError('Захиалгын дарааллыг хадгалахад алдаа гарлаа');
+      }
+    } catch (err: any) {
+      // Revert on error
+      await fetchOrders();
+      setError('Захиалгын дарааллыг хадгалахад алдаа гарлаа');
+    }
   };
 
   // Handle date range filter changes
@@ -873,178 +1032,170 @@ export default function LivePage() {
       </Dialog>
 
       <div className="border rounded-lg overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                <Checkbox
-                  checked={
-                    paginatedOrders.length > 0 &&
-                    paginatedOrders.every((order) =>
-                      selectedOrders.has(order.id)
-                    )
-                  }
-                  onCheckedChange={handleSelectAll}
-                />
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Утас</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.phone}
-                    onChange={(e) => handleFilterChange('phone', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Код</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.kod}
-                    onChange={(e) => handleFilterChange('kod', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Үнэ</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.price}
-                    onChange={(e) => handleFilterChange('price', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Тайлбар</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.comment}
-                    onChange={(e) => handleFilterChange('comment', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Тоо ширхэг</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.number}
-                    onChange={(e) => handleFilterChange('number', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Ирж авсан огноо</span>
-                  <Input
-                    type="date"
-                    value={filters.received_date}
-                    onChange={(e) => handleFilterChange('received_date', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-             
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Гүйлгээний огноо</span>
-                  <Input
-                    type="date"
-                    value={filters.paid_date}
-                    onChange={(e) => handleFilterChange('paid_date', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Нэмэлт тайлбар</span>
-                  <Input
-                    placeholder="Шүүх..."
-                    value={filters.feature}
-                    onChange={(e) => handleFilterChange('feature', e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex flex-col gap-1">
-                  <span>Төлөв</span>
-                </div>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8">
-                  Ачааллаж байна...
-                </TableCell>
-              </TableRow>
-            ) : filteredOrders.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  Мэдээлэл олдсонгүй
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedOrders.map((order) => (
-                <TableRow
-                  key={order.id}
-                  className={getStatusColor(order.status || 1)}
-                >
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedOrders.has(order.id)}
-                      onCheckedChange={(checked) =>
-                        handleCheckboxChange(order.id, checked as boolean)
-                      }
+                <TableHead className="w-8"></TableHead>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={
+                      paginatedOrders.length > 0 &&
+                      paginatedOrders.every((order) =>
+                        selectedOrders.has(order.id)
+                      )
+                    }
+                    onCheckedChange={handleSelectAll}
+                  />
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Утас</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.phone}
+                      onChange={(e) => handleFilterChange('phone', e.target.value)}
+                      className="h-8 text-xs"
                     />
-                  </TableCell>
-                  <TableCell className="font-medium">{order.phone}</TableCell>
-                  <TableCell>
-                    {order.baraanii_kod_name || '-'}
-                  </TableCell>
-                  <TableCell>{formatCurrency(order.price)}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {order.comment || '-'}
-                  </TableCell>
-                  <TableCell>{order.number || '-'}</TableCell>
-                  <TableCell>{formatDate(order.received_date)}</TableCell>
-                  <TableCell>{formatDate(order.paid_date)}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {order.feature || '-'}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        order.status === 1
-                          ? 'bg-blue-100 text-blue-800'
-                          : order.status === 2
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}
-                    >
-                      {getStatusLabel(order.status || 1)}
-                    </span>
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Код</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.kod}
+                      onChange={(e) => handleFilterChange('kod', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Үнэ</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.price}
+                      onChange={(e) => handleFilterChange('price', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Тайлбар</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.comment}
+                      onChange={(e) => handleFilterChange('comment', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Тоо ширхэг</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.number}
+                      onChange={(e) => handleFilterChange('number', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Ирж авсан огноо</span>
+                    <Input
+                      type="date"
+                      value={filters.received_date}
+                      onChange={(e) => handleFilterChange('received_date', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Хүргэсэн огноо</span>
+                    <Input
+                      type="date"
+                      value={filters.delivered_date}
+                      onChange={(e) => handleFilterChange('delivered_date', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Гүйлгээний огноо</span>
+                    <Input
+                      type="date"
+                      value={filters.paid_date}
+                      onChange={(e) => handleFilterChange('paid_date', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Нэмэлт тайлбар</span>
+                    <Input
+                      placeholder="Шүүх..."
+                      value={filters.feature}
+                      onChange={(e) => handleFilterChange('feature', e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex flex-col gap-1">
+                    <span>Төлөв</span>
+                  </div>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={12} className="text-center py-8">
+                    Ачааллаж байна...
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : filteredOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={12}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    Мэдээлэл олдсонгүй
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <SortableContext
+                  items={paginatedOrders.map((order) => order.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {paginatedOrders.map((order) => (
+                    <SortableRow
+                      key={order.id}
+                      order={order}
+                      selectedOrders={selectedOrders}
+                      handleCheckboxChange={handleCheckboxChange}
+                      getStatusColor={getStatusColor}
+                      getStatusLabel={getStatusLabel}
+                      formatCurrency={formatCurrency}
+                      formatDate={formatDate}
+                    />
+                  ))}
+                </SortableContext>
+              )}
+            </TableBody>
+          </Table>
+        </DndContext>
       </div>
 
       {/* Pagination Controls */}

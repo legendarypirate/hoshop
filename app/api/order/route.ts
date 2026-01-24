@@ -25,7 +25,16 @@ export async function GET(request: NextRequest) {
       queryParams.push(parseInt(type));
     }
     
-    query += ` ORDER BY o.order_date DESC, o.created_at DESC`;
+    // For type 1 (live), order by display_order first, then by created_at
+    // For other types, order by order_date and created_at
+    if (type === '1') {
+      query += ` ORDER BY 
+        CASE WHEN o.display_order IS NULL THEN 1 ELSE 0 END,
+        o.display_order ASC NULLS LAST,
+        o.created_at DESC`;
+    } else {
+      query += ` ORDER BY o.order_date DESC, o.created_at DESC`;
+    }
     
     const result = await pool.query(query, queryParams);
     return NextResponse.json(result.rows);

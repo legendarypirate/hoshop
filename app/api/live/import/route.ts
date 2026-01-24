@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
+// Load column mappings from database, fallback to defaults
+async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<string, { columnNames: string[]; isRequired: boolean }>> {
+  const mappings = new Map<string, { columnNames: string[]; isRequired: boolean }>();
+  
+  try {
+    const result = await pool.query(
+      'SELECT field_name, column_names, is_required FROM import_column_mappings WHERE import_type = $1',
+      [importType]
+    );
+
+    result.rows.forEach((row) => {
+      try {
+        const parsed = JSON.parse(row.column_names);
+        // Validate that parsed value is an array
+        if (!Array.isArray(parsed)) {
+          console.error(`Invalid column_names format for ${row.field_name}: expected array`);
+          return;
+        }
+        // Validate array contains only strings
+        if (!parsed.every(item => typeof item === 'string')) {
+          console.error(`Invalid column_names format for ${row.field_name}: array must contain only strings`);
+          return;
+        }
+        mappings.set(row.field_name, {
+          columnNames: parsed,
+          isRequired: row.is_required,
+        });
+      } catch (error) {
+        console.error(`Error parsing column_names for ${row.field_name}:`, error);
+        // Skip invalid entries instead of crashing
+      }
+    });
+  } catch (error) {
+    console.error('Error loading column mappings, using defaults:', error);
+  }
+
+  // Fallback to defaults if no mappings found
+  if (mappings.size === 0) {
+    const defaults: { [key: string]: string[] } = {
+      phone: ['Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар', 'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE', 'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'],
+      kod: ['Код', 'kod', 'Kod', 'Барааны код', 'код'],
+      price: ['Үнэ', 'price', 'Price', 'үнэ'],
+      comment: ['Тайлбар', 'comment', 'Comment', 'тайлбар'],
+      number: ['Тоо', 'Тоо ширхэг', 'number', 'Number', 'тоо'],
+      received_date: ['Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
+      delivered_date: ['Хүргэлттэй', 'Хүргэсэн огноо', 'delivered_date', 'Delivered Date', 'хүргэлттэй'],
+      paid_date: ['Гүйлгээ хйисэн огноо', 'Гүйлгээний огноо', 'paid_date', 'Paid Date', 'Төлбөрийн огноо', 'гүйлгээ хйисэн огноо'],
+      feature: ['Нэмэлт тайлбар', 'feature', 'Feature', 'Онцлог', 'нэмэлт тайлбар'],
+    };
+
+    Object.entries(defaults).forEach(([fieldName, columnNames]) => {
+      mappings.set(fieldName, {
+        columnNames,
+        isRequired: fieldName === 'phone' || fieldName === 'kod',
+      });
+    });
+  }
+
+  return mappings;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Use require for xlsx (CommonJS module) - works in Next.js API routes
@@ -33,6 +94,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Load column mappings
+    const columnMappings = await loadColumnMappings('live');
 
     // Helper function to normalize string for comparison (remove all whitespace)
     const normalizeString = (str: string): string => {
@@ -156,14 +220,15 @@ export async function POST(request: NextRequest) {
       const rowNum = i + 2; // +2 because Excel rows start at 1 and we have header
 
       try {
-        // Extract data from row with flexible column matching
+        // Extract data from row using configured column mappings
+        const getMappedValue = (fieldName: string): any => {
+          const mapping = columnMappings.get(fieldName);
+          if (!mapping) return null;
+          return getColumnValue(row, mapping.columnNames);
+        };
+
         // Phone can be a number in Excel, so handle both string and number
-        // Try expanded list of possible phone column names
-        let phoneValue = getColumnValue(row, [
-          'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар',
-          'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE',
-          'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'
-        ]);
+        let phoneValue = getMappedValue('phone');
         
         // If not found and we detected a phone column, use that
         if ((!phoneValue || phoneValue === '') && detectedPhoneColumn) {
@@ -173,17 +238,18 @@ export async function POST(request: NextRequest) {
         const phone = phoneValue !== null && phoneValue !== undefined 
           ? String(phoneValue).trim() 
           : '';
-        const kod = String(getColumnValue(row, ['Код', 'kod', 'Kod', 'Барааны код', 'код']) || '').trim();
-        const price = getColumnValue(row, ['Үнэ', 'price', 'Price', 'үнэ']);
-        const comment = String(getColumnValue(row, ['Тайлбар', 'comment', 'Comment', 'тайлбар']) || '').trim() || null;
-        const number = getColumnValue(row, ['Тоо', 'Тоо ширхэг', 'number', 'Number', 'тоо']);
-        const receivedDate = getColumnValue(row, ['Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо']);
-        const deliveredDate = getColumnValue(row, ['Хүргэлттэй', 'Хүргэсэн огноо', 'delivered_date', 'Delivered Date', 'хүргэлттэй']);
-        const paidDate = getColumnValue(row, ['Гүйлгээ хйисэн огноо', 'Гүйлгээний огноо', 'paid_date', 'Paid Date', 'Төлбөрийн огноо', 'гүйлгээ хйисэн огноо']);
-        const feature = String(getColumnValue(row, ['Нэмэлт тайлбар', 'feature', 'Feature', 'Онцлог', 'нэмэлт тайлбар']) || '').trim() || null;
+        const kod = String(getMappedValue('kod') || '').trim();
+        const price = getMappedValue('price');
+        const comment = String(getMappedValue('comment') || '').trim() || null;
+        const number = getMappedValue('number');
+        const receivedDate = getMappedValue('received_date');
+        const deliveredDate = getMappedValue('delivered_date');
+        const paidDate = getMappedValue('paid_date');
+        const feature = String(getMappedValue('feature') || '').trim() || null;
 
-        // Validate required fields
-        if (!phone || phone === '') {
+        // Validate required fields based on configured mappings
+        const phoneMapping = columnMappings.get('phone');
+        if (phoneMapping?.isRequired && (!phone || phone === '')) {
           results.failed++;
           // Log available columns for debugging (only for first error)
           if (results.errors.length === 0 && i === 0) {
@@ -203,7 +269,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (!kod) {
+        const kodMapping = columnMappings.get('kod');
+        if (kodMapping?.isRequired && !kod) {
           results.failed++;
           results.errors.push(`Мөр ${rowNum}: Барааны код оруулах шаардлагатай`);
           continue;
@@ -311,16 +378,22 @@ export async function POST(request: NextRequest) {
         let withDelivery = false;
         let parsedDeliveredDate: string | null = null;
         if (deliveredDate) {
-          const deliveryStr = String(deliveredDate).trim();
-          // If it looks like a price (contains "k" or starts with digits), treat as delivery cost
-          if (deliveryStr.toLowerCase().endsWith('k') || /^\d+/.test(deliveryStr)) {
+          // First try to parse as a date
+          parsedDeliveredDate = parseDate(deliveredDate);
+          
+          if (parsedDeliveredDate) {
+            // Successfully parsed as date
             withDelivery = true;
-            // Delivery cost is stored, but we don't have a separate column for it
-            // Just mark as with_delivery = true
           } else {
-            // Otherwise treat as date
-            parsedDeliveredDate = parseDate(deliveredDate);
-            if (parsedDeliveredDate) {
+            // Not a date, check if it's a price (ends with "k" or is a simple number)
+            const deliveryStr = String(deliveredDate).trim();
+            // Only treat as price if it ends with "k" or is a simple number (not a date format)
+            if (deliveryStr.toLowerCase().endsWith('k')) {
+              withDelivery = true;
+              // Delivery cost is stored, but we don't have a separate column for it
+              // Just mark as with_delivery = true
+            } else if (/^\d+$/.test(deliveryStr)) {
+              // Simple number (not a date format like "2024-10-08" or "8-Oct")
               withDelivery = true;
             }
           }

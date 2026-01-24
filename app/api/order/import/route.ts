@@ -1,6 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
+// Load column mappings from database, fallback to defaults
+async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<string, { columnNames: string[]; isRequired: boolean }>> {
+  const mappings = new Map<string, { columnNames: string[]; isRequired: boolean }>();
+  
+  try {
+    const result = await pool.query(
+      'SELECT field_name, column_names, is_required FROM import_column_mappings WHERE import_type = $1',
+      [importType]
+    );
+
+    result.rows.forEach((row) => {
+      try {
+        const parsed = JSON.parse(row.column_names);
+        // Validate that parsed value is an array
+        if (!Array.isArray(parsed)) {
+          console.error(`Invalid column_names format for ${row.field_name}: expected array`);
+          return;
+        }
+        // Validate array contains only strings
+        if (!parsed.every(item => typeof item === 'string')) {
+          console.error(`Invalid column_names format for ${row.field_name}: array must contain only strings`);
+          return;
+        }
+        mappings.set(row.field_name, {
+          columnNames: parsed,
+          isRequired: row.is_required,
+        });
+      } catch (error) {
+        console.error(`Error parsing column_names for ${row.field_name}:`, error);
+        // Skip invalid entries instead of crashing
+      }
+    });
+  } catch (error) {
+    console.error('Error loading column mappings, using defaults:', error);
+  }
+
+  // Fallback to defaults if no mappings found
+  if (mappings.size === 0) {
+    const defaults: { [key: string]: string[] } = {
+      phone: ['дугаар', 'Дугаар', 'DUGAAR', 'Dugaar', 'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар', 'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE', 'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'],
+      kod: ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД'],
+      price: ['үнэ', 'Үнэ', 'price', 'Price', 'PRICE'],
+      feature: ['тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar', 'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'],
+      comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'],
+      number: ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER'],
+      order_date: ['Гүйлгээ хийсэн огноо', 'гүйлгээ хийсэн огноо', 'ГҮЙЛГЭЭ ХИЙСЭН ОГНОО', 'Захиалгын огноо', 'order_date', 'Order Date', 'захиалгын огноо'],
+      paid_date: ['Тоо өгсөн огноо', 'тоо өгсөн огноо', 'ТОО ӨГСӨН ОГНОО', 'Төлбөрийн огноо', 'paid_date', 'Paid Date', 'төлбөрийн огноо'],
+      received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
+      with_delivery: ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй'],
+    };
+
+    Object.entries(defaults).forEach(([fieldName, columnNames]) => {
+      mappings.set(fieldName, {
+        columnNames,
+        isRequired: fieldName === 'phone' || fieldName === 'kod',
+      });
+    });
+  }
+
+  return mappings;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Use require for xlsx (CommonJS module) - works in Next.js API routes
@@ -33,6 +95,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Load column mappings
+    const columnMappings = await loadColumnMappings('order');
 
     // Helper function to normalize string for comparison (remove all whitespace)
     const normalizeString = (str: string): string => {
@@ -107,58 +172,35 @@ export async function POST(request: NextRequest) {
       const rowNum = i + 2; // +2 because Excel rows start at 1 and we have header
 
       try {
-        // Extract data from row with flexible column matching
-        // Phone can be in дугаар column or утас column
-        let phoneValue = getColumnValue(row, [
-          'дугаар', 'Дугаар', 'DUGAAR', 'Dugaar',
-          'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар',
-          'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE',
-          'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'
-        ]);
-        
-        const phone = phoneValue !== null && phoneValue !== undefined 
-          ? String(phoneValue).trim() 
-          : '';
-        const kod = String(getColumnValue(row, ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД']) || '').trim();
-        const price = getColumnValue(row, ['үнэ', 'Үнэ', 'price', 'Price', 'PRICE']);
-        // тайлбар maps to feature (description)
-        const feature = String(getColumnValue(row, [
-          'тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar',
-          'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'
-        ]) || '').trim() || null;
-        // nemelt tailbar maps to comment (additional notes)
-        const comment = String(getColumnValue(row, [
-          'nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR',
-          'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР',
-          'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'
-        ]) || '').trim() || null;
-        const number = getColumnValue(row, ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER']);
-        // Гүйлгээ хийсэн огноо maps to order_date
-        const orderDate = getColumnValue(row, [
-          'Гүйлгээ хийсэн огноо', 'гүйлгээ хийсэн огноо', 'ГҮЙЛГЭЭ ХИЙСЭН ОГНОО',
-          'Захиалгын огноо', 'order_date', 'Order Date', 'захиалгын огноо'
-        ]);
-        // Тоо өгсөн огноо maps to paid_date
-        const paidDate = getColumnValue(row, [
-          'Тоо өгсөн огноо', 'тоо өгсөн огноо', 'ТОО ӨГСӨН ОГНОО',
-          'Төлбөрийн огноо', 'paid_date', 'Paid Date', 'төлбөрийн огноо'
-        ]);
-        // Ирж авсан maps to received_date
-        const receivedDate = getColumnValue(row, [
-          'Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН',
-          'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'
-        ]);
-        const withDeliveryValue = getColumnValue(row, ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй']);
+        // Extract data from row using configured column mappings
+        const getMappedValue = (fieldName: string): any => {
+          const mapping = columnMappings.get(fieldName);
+          if (!mapping) return null;
+          return getColumnValue(row, mapping.columnNames);
+        };
 
-        // Validate required fields
-        if (!phone || phone === '') {
+        const phone = String(getMappedValue('phone') || '').trim();
+        const kod = String(getMappedValue('kod') || '').trim();
+        const price = getMappedValue('price');
+        const feature = String(getMappedValue('feature') || '').trim() || null;
+        const comment = String(getMappedValue('comment') || '').trim() || null;
+        const number = getMappedValue('number');
+        const orderDate = getMappedValue('order_date');
+        const paidDate = getMappedValue('paid_date');
+        const receivedDate = getMappedValue('received_date');
+        const withDeliveryValue = getMappedValue('with_delivery');
+
+        // Validate required fields based on configured mappings
+        const phoneMapping = columnMappings.get('phone');
+        if (phoneMapping?.isRequired && (!phone || phone === '')) {
           results.failed++;
           const availableCols = Object.keys(row).join(', ');
           results.errors.push(`Мөр ${rowNum}: Утасны дугаар оруулах шаардлагатай${availableCols ? ` (Олдсон багана: ${availableCols})` : ''}`);
           continue;
         }
 
-        if (!kod) {
+        const kodMapping = columnMappings.get('kod');
+        if (kodMapping?.isRequired && !kod) {
           results.failed++;
           results.errors.push(`Мөр ${rowNum}: Барааны код оруулах шаардлагатай`);
           continue;

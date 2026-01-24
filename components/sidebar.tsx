@@ -64,6 +64,10 @@ const settingsSubItems = [
     title: 'Хэмжээ',
     href: '/settings/sizes',
   },
+  {
+    title: 'Excel импорт багана',
+    href: '/settings/import-columns',
+  },
 ];
 
 export function Sidebar() {
