@@ -65,6 +65,10 @@ interface Order {
   comment: string | null;
   status?: number;
   created_at: string;
+  metadata?: {
+    toollogo?: number;
+    with_delivery_numeric?: number;
+  } | null;
 }
 
 export default function OrderPage() {
@@ -96,6 +100,8 @@ export default function OrderPage() {
     order_date: '',
     received_date: '',
     comment: '',
+    phoneColor: 'all', // Filter by phone background color (with_delivery_numeric)
+    kodColor: 'all', // Filter by kod background color (toollogo)
   });
 
   // Date range filter states
@@ -377,6 +383,29 @@ export default function OrderPage() {
     return new Intl.NumberFormat('mn-MN').format(amount);
   };
 
+  // Get background color for phone column based on with_delivery_numeric
+  const getPhoneBackgroundColor = (order: Order): string => {
+    const withDeliveryNumeric = order.metadata?.with_delivery_numeric;
+    if (withDeliveryNumeric === 7) {
+      return 'bg-red-100'; // хүргэлтэнд гарсан - red
+    } else if (withDeliveryNumeric === 1) {
+      return 'bg-green-100'; // ирж авсан - green
+    } else if (withDeliveryNumeric === 2) {
+      return 'bg-orange-100'; // буцаасан - orange/yellow
+    }
+    return 'bg-white'; // default - white
+  };
+
+  // Get background color for baraanii_kod column based on toollogo
+  const getKodBackgroundColor = (order: Order): string => {
+    const toollogo = order.metadata?.toollogo;
+    // Handle both number and string values (in case it's stored as string in some cases)
+    if (toollogo !== undefined && toollogo !== null && Number(toollogo) === 3) {
+      return 'bg-yellow-100'; // yellow background
+    }
+    return 'bg-white'; // default - white
+  };
+
   // Handle Excel import
   const handleExcelImport = () => {
     fileInputRef.current?.click();
@@ -466,9 +495,10 @@ export default function OrderPage() {
       return;
     }
 
-    // If status is 3 (хүргэлтэнд гарсна), date is required
-    if (newStatus === 3 && !statusChangeDate) {
-      setError('Хүргэлтэнд гарсна төлөвт шилжүүлэхдээ огноо оруулах шаардлагатай');
+    // If status is 2 (ирж авсан) or 3 (хүргэлтэнд гарсна), date is required
+    if ((newStatus === 2 || newStatus === 3) && !statusChangeDate) {
+      const statusLabel = newStatus === 2 ? 'Ирж авсан' : 'Хүргэлтэнд гарсна';
+      setError(`${statusLabel} төлөвт шилжүүлэхдээ огноо оруулах шаардлагатай`);
       return;
     }
 
@@ -481,7 +511,7 @@ export default function OrderPage() {
         body: JSON.stringify({
           orderIds: Array.from(selectedOrders),
           status: newStatus,
-          date: newStatus === 3 ? statusChangeDate : undefined,
+          date: (newStatus === 2 || newStatus === 3) ? statusChangeDate : undefined,
         }),
       });
 
@@ -500,15 +530,15 @@ export default function OrderPage() {
     }
   };
 
-  // Get status color
+  // Get status color - same as phone number column coloring
   const getStatusColor = (status: number) => {
     switch (status) {
       case 1: // шинэ үүссэн
-        return 'bg-blue-300 hover:bg-blue-400';
-      case 2: // ирж авсан
-        return 'bg-green-50 hover:bg-green-100';
-      case 3: // хүргэлтгэнд гаргасан
-        return 'bg-yellow-300 hover:bg-yellow-400';
+        return 'bg-white hover:bg-gray-50';
+      case 2: // ирж авсан - green (same as phone column with_delivery_numeric === 1)
+        return 'bg-green-100 hover:bg-green-200';
+      case 3: // хүргэлтгэнд гаргасан - red (same as phone column with_delivery_numeric === 7)
+        return 'bg-red-100 hover:bg-red-200';
       default:
         return '';
     }
@@ -535,9 +565,43 @@ export default function OrderPage() {
       return false;
     }
     
+    // Phone color filter (based on with_delivery_numeric)
+    if (filters.phoneColor && filters.phoneColor !== 'all') {
+      const withDeliveryNumeric = order.metadata?.with_delivery_numeric;
+      const filterValue = parseInt(filters.phoneColor);
+      if (filterValue === 0) {
+        // Filter for white/default (not 7, 1, or 2)
+        if (withDeliveryNumeric === 7 || withDeliveryNumeric === 1 || withDeliveryNumeric === 2) {
+          return false;
+        }
+      } else {
+        // Filter for specific color (7, 1, or 2)
+        if (withDeliveryNumeric !== filterValue) {
+          return false;
+        }
+      }
+    }
+    
     // Code filter
     if (filters.kod && !(order.baraanii_kod_name || '').toLowerCase().includes(filters.kod.toLowerCase())) {
       return false;
+    }
+    
+    // Kod color filter (based on toollogo)
+    if (filters.kodColor && filters.kodColor !== 'all') {
+      const toollogo = order.metadata?.toollogo;
+      const filterValue = parseInt(filters.kodColor);
+      if (filterValue === 0) {
+        // Filter for white/default (not 3)
+        if (toollogo !== undefined && toollogo !== null && Number(toollogo) === 3) {
+          return false;
+        }
+      } else {
+        // Filter for specific color (3 = yellow)
+        if (toollogo === undefined || toollogo === null || Number(toollogo) !== filterValue) {
+          return false;
+        }
+      }
     }
     
     // Price filter
@@ -810,7 +874,7 @@ export default function OrderPage() {
                 value={String(newStatus)}
                 onValueChange={(value) => {
                   setNewStatus(parseInt(value));
-                  if (parseInt(value) !== 3) {
+                  if (parseInt(value) !== 2 && parseInt(value) !== 3) {
                     setStatusChangeDate('');
                   }
                 }}
@@ -825,7 +889,7 @@ export default function OrderPage() {
                 </SelectContent>
               </Select>
             </div>
-            {newStatus === 3 && (
+            {(newStatus === 2 || newStatus === 3) && (
               <div>
                 <Label htmlFor="status-date">Ирж авсан огноо <span className="text-destructive">*</span></Label>
                 <Input
@@ -876,6 +940,21 @@ export default function OrderPage() {
                     onChange={(e) => handleFilterChange('phone', e.target.value)}
                     className="h-8 text-xs"
                   />
+                  <Select
+                    value={filters.phoneColor}
+                    onValueChange={(value) => handleFilterChange('phoneColor', value)}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Өнгөөр шүүх" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Бүгд</SelectItem>
+                      <SelectItem value="7">🔴 Улаан (хүргэлтэнд гарсан)</SelectItem>
+                      <SelectItem value="1">🟢 Ногоон (ирж авсан)</SelectItem>
+                      <SelectItem value="2">🟠 Улбар шар (буцаасан)</SelectItem>
+                      <SelectItem value="0">⚪ Цагаан (өөр)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </TableHead>
               <TableHead>
@@ -887,6 +966,19 @@ export default function OrderPage() {
                     onChange={(e) => handleFilterChange('kod', e.target.value)}
                     className="h-8 text-xs"
                   />
+                  <Select
+                    value={filters.kodColor}
+                    onValueChange={(value) => handleFilterChange('kodColor', value)}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Өнгөөр шүүх" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Бүгд</SelectItem>
+                      <SelectItem value="3">🟡 Шар (тооллого)</SelectItem>
+                      <SelectItem value="0">⚪ Цагаан (өөр)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </TableHead>
               <TableHead>
@@ -995,8 +1087,10 @@ export default function OrderPage() {
                     />
                   </TableCell>
                   <TableCell>{order.id}</TableCell>
-                  <TableCell className="font-medium">{order.phone}</TableCell>
-                  <TableCell>
+                  <TableCell className={`font-medium ${getPhoneBackgroundColor(order)}`}>
+                    {order.phone}
+                  </TableCell>
+                  <TableCell className={getKodBackgroundColor(order)}>
                     {order.baraanii_kod_name || `ID: ${order.baraanii_kod_id}`}
                   </TableCell>
                   <TableCell>{formatCurrency(order.price)}</TableCell>

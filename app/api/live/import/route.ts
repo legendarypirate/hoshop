@@ -37,13 +37,14 @@ async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<str
   if (mappings.size === 0) {
     const defaults: { [key: string]: string[] } = {
       phone: ['дугаар', 'Дугаар', 'DUGAAR', 'Dugaar', 'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар', 'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE', 'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'],
-      kod: ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД'],
+      kod: ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД', 'барааны код'],
       price: ['үнэ', 'Үнэ', 'price', 'Price', 'PRICE'],
       feature: ['тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar', 'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'],
-      comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'],
+      comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT'],
       number: ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER'],
       order_date: ['Захиалгын огноо', 'захиалгын огноо', 'ЗАХИАЛГЫН ОГНОО', 'order_date', 'Order Date', 'order date', 'Order date', 'ORDER_DATE'],
-      received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
+      received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'ирж авсан огноо', 'received_date', 'Received Date'],
+      paid_date: ['Гүйлгээний огноо', 'гүйлгээний огноо', 'ГҮЙЛГЭЭНИЙ ОГНОО', 'paid_date', 'Paid Date', 'paid date', 'PAID_DATE', 'Transaction Date', 'transaction_date'],
       with_delivery: ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй'],
     };
 
@@ -89,6 +90,12 @@ export async function POST(request: NextRequest) {
 
     const columnMappings = await loadColumnMappings('live');
 
+    // Debug: Log first row to see what columns are available
+    if (data.length > 0) {
+      console.log('Available columns in Excel:', Object.keys(data[0]));
+      console.log('First row data:', data[0]);
+    }
+
     const normalizeString = (str: string): string => {
       return str.replace(/\s+/g, '').toLowerCase();
     };
@@ -96,13 +103,29 @@ export async function POST(request: NextRequest) {
     const getColumnValue = (row: any, possibleNames: string[]): any => {
       const rowKeys = Object.keys(row);
       
+      // First try exact match (case-sensitive)
       for (const name of possibleNames) {
-        const value = row[name];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
+        if (rowKeys.includes(name)) {
+          const value = row[name];
+          if (value !== undefined && value !== null && value !== '') {
+            return value;
+          }
         }
       }
       
+      // Try exact match (case-insensitive, trimmed)
+      for (const name of possibleNames) {
+        const nameTrimmed = name.trim();
+        const found = rowKeys.find(key => key.trim() === nameTrimmed);
+        if (found) {
+          const value = row[found];
+          if (value !== undefined && value !== null && value !== '') {
+            return value;
+          }
+        }
+      }
+      
+      // Try normalized matching (remove all whitespace for comparison)
       for (const name of possibleNames) {
         const nameNormalized = normalizeString(name);
         const found = rowKeys.find(key => {
@@ -119,6 +142,7 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      // Try case-insensitive and trimmed matching (fallback)
       for (const name of possibleNames) {
         const nameLower = name.trim().toLowerCase();
         const found = rowKeys.find(key => {
@@ -169,6 +193,7 @@ export async function POST(request: NextRequest) {
         const number = getMappedValue('number');
         const orderDate = getMappedValue('order_date');
         const receivedDate = getMappedValue('received_date');
+        const paidDate = getMappedValue('paid_date');
         const withDeliveryValue = getMappedValue('with_delivery');
 
         const phoneMapping = columnMappings.get('phone');
@@ -186,26 +211,29 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        let baraaniiKodId = kodMap.get(kod.toLowerCase());
-        if (!baraaniiKodId) {
-          const insertResult = await pool.query(
-            'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
-            [kod]
-          );
-          const newId = insertResult.rows[0]?.id;
-          if (newId === undefined) {
-            results.failed++;
-            results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа гарлаа`);
-            continue;
+        let baraaniiKodId: number | undefined = undefined;
+        if (kod && kod.trim() !== '') {
+          baraaniiKodId = kodMap.get(kod.toLowerCase().trim());
+          if (!baraaniiKodId) {
+            try {
+              const insertResult = await pool.query(
+                'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
+                [kod.trim()]
+              );
+              const newId = insertResult.rows[0]?.id;
+              if (newId === undefined) {
+                results.failed++;
+                results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа гарлаа`);
+                continue;
+              }
+              baraaniiKodId = newId;
+              kodMap.set(kod.toLowerCase().trim(), newId);
+            } catch (error: any) {
+              results.failed++;
+              results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа: ${error.message || 'Алдаа гарлаа'}`);
+              continue;
+            }
           }
-          baraaniiKodId = newId;
-          kodMap.set(kod.toLowerCase(), newId);
-        }
-        
-        if (baraaniiKodId === undefined) {
-          results.failed++;
-          results.errors.push(`Мөр ${rowNum}: Барааны код олдсонгүй`);
-          continue;
         }
 
         const parsePrice = (priceValue: any): number | null => {
@@ -231,6 +259,14 @@ export async function POST(request: NextRequest) {
         const parseDate = (dateValue: any): string | null => {
           if (!dateValue) return null;
           
+          // Helper function to format date as YYYY-MM-DD using local timezone
+          const formatDateLocal = (date: Date): string => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          
           if (typeof dateValue === 'string') {
             const dateStr = dateValue.trim();
             if (!dateStr) return null;
@@ -251,20 +287,26 @@ export async function POST(request: NextRequest) {
                 const fullYear = year < 100 ? (year < 50 ? 2000 + year : 1900 + year) : year;
                 const date = new Date(fullYear, month, day);
                 if (!isNaN(date.getTime())) {
-                  return date.toISOString().split('T')[0];
+                  return formatDateLocal(date);
                 }
               }
             }
             
             const date = new Date(dateStr);
             if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
+              return formatDateLocal(date);
             }
           } else if (typeof dateValue === 'number') {
+            // Excel date serial number (days since 1900-01-01, but Excel incorrectly treats 1900 as leap year)
+            // Excel epoch is actually 1899-12-30
             const excelEpoch = new Date(1899, 11, 30);
             const date = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
             if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
+              return formatDateLocal(date);
+            }
+          } else if (dateValue instanceof Date) {
+            if (!isNaN(dateValue.getTime())) {
+              return formatDateLocal(dateValue);
             }
           }
           
@@ -275,25 +317,35 @@ export async function POST(request: NextRequest) {
         const parsedNumber = number ? parseInt(String(number)) : null;
         const parsedOrderDate = parseDate(orderDate);
         const parsedReceivedDate = parseDate(receivedDate);
+        const parsedPaidDate = parseDate(paidDate);
         const withDelivery = withDeliveryValue ? 
           (String(withDeliveryValue).toLowerCase() === 'тийм' || 
            String(withDeliveryValue).toLowerCase() === 'yes' || 
            String(withDeliveryValue).toLowerCase() === 'true' ||
            String(withDeliveryValue) === '1') : false;
 
+        // Validate that we have at least phone or kod (one should be present)
+        if ((!phone || phone === '') && (!kod || kod === '')) {
+          results.failed++;
+          const availableCols = Object.keys(row).join(', ');
+          results.errors.push(`Мөр ${rowNum}: Утасны дугаар эсвэл Барааны код заавал байх ёстой${availableCols ? ` (Олдсон багана: ${availableCols})` : ''}`);
+          continue;
+        }
+
         await pool.query(
           `INSERT INTO order_table (
             phone, baraanii_kod_id, price, comment, number,
-            order_date, received_date, feature, with_delivery, status, type
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            order_date, received_date, paid_date, feature, with_delivery, status, type
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
-            phone,
-            baraaniiKodId,
+            phone || null,
+            baraaniiKodId || null,
             parsedPrice,
             comment,
             parsedNumber,
             parsedOrderDate,
             parsedReceivedDate,
+            parsedPaidDate,
             feature,
             withDelivery,
             1,
@@ -308,8 +360,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If no rows were successfully imported, return error
+    if (results.success === 0 && results.failed > 0) {
+      return NextResponse.json(
+        {
+          error: 'Импорт амжилтгүй',
+          message: `Бүх мөр амжилтгүй боллоо (${results.failed} мөр)`,
+          success: results.success,
+          failed: results.failed,
+          errors: results.errors.slice(0, 50),
+        },
+        { status: 400 }
+      );
+    }
+
+    // If no rows at all were processed, return error
+    if (results.success === 0 && results.failed === 0) {
+      return NextResponse.json(
+        {
+          error: 'Импорт амжилтгүй',
+          message: 'Ямар ч мөр олдсонгүй эсвэл боловсруулаагүй',
+          success: 0,
+          failed: 0,
+          errors: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    // Return success with details
     return NextResponse.json({
-      message: 'Импорт амжилттай',
+      message: results.failed > 0 
+        ? `Импорт хэсэгчлэн амжилттай (${results.success} амжилттай, ${results.failed} амжилтгүй)`
+        : 'Импорт амжилттай',
       success: results.success,
       failed: results.failed,
       errors: results.errors.slice(0, 50),
@@ -322,3 +405,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

@@ -37,27 +37,39 @@ async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<str
     console.error('Error loading column mappings, using defaults:', error);
   }
 
-  // Fallback to defaults if no mappings found
-  if (mappings.size === 0) {
-    const defaults: { [key: string]: string[] } = {
-      phone: ['дугаар', 'Дугаар', 'DUGAAR', 'Dugaar', 'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар', 'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE', 'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'],
-      kod: ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД'],
-      price: ['үнэ', 'Үнэ', 'price', 'Price', 'PRICE'],
-      feature: ['тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar', 'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'],
-      comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'],
-      number: ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER'],
-      order_date: ['Захиалгын огноо', 'захиалгын огноо', 'ЗАХИАЛГЫН ОГНОО', 'order_date', 'Order Date', 'order date', 'Order date', 'ORDER_DATE'],
-      received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
-      with_delivery: ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй'],
-    };
+  // Default mappings - always merge with database mappings to ensure all column names are available
+  const defaults: { [key: string]: string[] } = {
+    phone: ['дугаар', 'Дугаар', 'DUGAAR', 'Dugaar', 'Утас', 'phone', 'Phone', 'утас', 'Утасны дугаар', 'утасны дугаар', 'Утасны', 'утасны', 'Phone Number', 'phone_number', 'PHONE', 'Телефон', 'телефон', 'Tel', 'tel', 'Telephone', 'telephone'],
+    kod: ['код', 'Код', 'kod', 'Kod', 'Барааны код', 'КОД'],
+    price: ['үнэ', 'Үнэ', 'price', 'Price', 'PRICE'],
+    feature: ['тайлбар', 'Тайлбар', 'TAILBAR', 'Tailbar', 'Онцлог', 'feature', 'Feature', 'онцлог', 'FEATURE'],
+    comment: ['nemelt tailbar', 'Nemelt tailbar', 'NEMELT TAILBAR', 'нэмэлт тайлбар', 'Нэмэлт тайлбар', 'НЭМЭЛТ ТАЙЛБАР', 'comment', 'Comment', 'COMMENT', 'Тайлбар', 'тайлбар'],
+    number: ['Тоо', 'тоо', 'TOO', 'Too', 'Тоо ширхэг', 'тоо ширхэг', 'number', 'Number', 'NUMBER'],
+    order_date: ['Захиалгын огноо', 'захиалгын огноо', 'ЗАХИАЛГЫН ОГНОО', 'order_date', 'Order Date', 'order date', 'Order date', 'ORDER_DATE'],
+    received_date: ['Ирж авсан', 'ирж авсан', 'ИРЖ АВСАН', 'Ирж авсан огноо', 'received_date', 'Received Date', 'ирж авсан огноо'],
+    paid_date: ['Гүйлгээний огноо', 'гүйлгээний огноо', 'ГҮЙЛГЭЭНИЙ ОГНОО', 'Төлбөрийн огноо', 'төлбөрийн огноо', 'ТӨЛБӨРИЙН ОГНОО', 'paid_date', 'Paid Date', 'paid date', 'PAID_DATE'],
+    with_delivery: ['Хүргэлттэй', 'with_delivery', 'With Delivery', 'хүргэлттэй'],
+    toollogo: ['Тооллого', 'тооллого', 'TOOLLOGO', 'Toollogo', 'Тооллого багана'],
+  };
 
-    Object.entries(defaults).forEach(([fieldName, columnNames]) => {
+  // Merge defaults with database mappings - ensure all default column names are included
+  Object.entries(defaults).forEach(([fieldName, defaultColumnNames]) => {
+    const existingMapping = mappings.get(fieldName);
+    if (existingMapping) {
+      // Merge: combine database column names with defaults, removing duplicates
+      const mergedColumnNames = [...new Set([...existingMapping.columnNames, ...defaultColumnNames])];
       mappings.set(fieldName, {
-        columnNames,
+        columnNames: mergedColumnNames,
+        isRequired: existingMapping.isRequired,
+      });
+    } else {
+      // Use default if no database mapping exists
+      mappings.set(fieldName, {
+        columnNames: defaultColumnNames,
         isRequired: fieldName === 'phone' || fieldName === 'kod',
       });
-    });
-  }
+    }
+  });
 
   return mappings;
 }
@@ -110,8 +122,12 @@ export async function POST(request: NextRequest) {
       // First try exact match
       for (const name of possibleNames) {
         const value = row[name];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
+        // For numeric fields (like price), 0 is a valid value, so check !== undefined && !== null
+        // For string fields, also check !== ''
+        if (value !== undefined && value !== null) {
+          if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) {
+            return value;
+          }
         }
       }
       
@@ -126,8 +142,10 @@ export async function POST(request: NextRequest) {
         });
         if (found) {
           const value = row[found];
-          if (value !== undefined && value !== null && value !== '') {
-            return value;
+          if (value !== undefined && value !== null) {
+            if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) {
+              return value;
+            }
           }
         }
       }
@@ -135,16 +153,24 @@ export async function POST(request: NextRequest) {
       // Try case-insensitive and trimmed matching (fallback)
       for (const name of possibleNames) {
         const nameLower = name.trim().toLowerCase();
+        const nameTrimmed = name.trim();
         const found = rowKeys.find(key => {
           const keyTrimmed = key.trim();
           const keyLower = keyTrimmed.toLowerCase();
-          return keyLower === nameLower || 
-                 keyTrimmed === name.trim();
+          // Exact match (case-insensitive)
+          if (keyLower === nameLower) return true;
+          // Trimmed exact match
+          if (keyTrimmed === nameTrimmed) return true;
+          // Contains match (for partial matches)
+          if (keyLower.includes(nameLower) || nameLower.includes(keyLower)) return true;
+          return false;
         });
         if (found) {
           const value = row[found];
-          if (value !== undefined && value !== null && value !== '') {
-            return value;
+          if (value !== undefined && value !== null) {
+            if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) {
+              return value;
+            }
           }
         }
       }
@@ -186,7 +212,9 @@ export async function POST(request: NextRequest) {
         const number = getMappedValue('number');
         const orderDate = getMappedValue('order_date');
         const receivedDate = getMappedValue('received_date');
+        const paidDate = getMappedValue('paid_date');
         const withDeliveryValue = getMappedValue('with_delivery');
+        const toollogoValue = getMappedValue('toollogo');
 
         // Validate required fields based on configured mappings
         const phoneMapping = columnMappings.get('phone');
@@ -231,10 +259,19 @@ export async function POST(request: NextRequest) {
 
         // Parse price
         const parsePrice = (priceValue: any): number | null => {
-          if (!priceValue) return null;
+          // Handle null, undefined, and empty string
+          if (priceValue === null || priceValue === undefined) return null;
+          if (priceValue === '') return null;
+          
+          // Handle numeric values directly (including 0)
+          if (typeof priceValue === 'number') {
+            return isNaN(priceValue) ? null : priceValue;
+          }
+          
           const priceStr = String(priceValue).trim();
           if (!priceStr) return null;
           
+          // Handle 'k' suffix (e.g., "5k" = 5000)
           if (priceStr.toLowerCase().endsWith('k')) {
             const numValue = parseFloat(priceStr.slice(0, -1));
             if (!isNaN(numValue)) {
@@ -242,6 +279,7 @@ export async function POST(request: NextRequest) {
             }
           }
           
+          // Remove all non-numeric characters except decimal point and minus sign
           const numValue = parseFloat(priceStr.replace(/[^\d.-]/g, ''));
           if (!isNaN(numValue)) {
             return numValue;
@@ -250,13 +288,29 @@ export async function POST(request: NextRequest) {
           return null;
         };
 
-        // Parse dates
+        // Parse dates - handles multiple formats including Excel serial numbers
         const parseDate = (dateValue: any): string | null => {
           if (!dateValue) return null;
           
+          // Helper function to format date as YYYY-MM-DD using local timezone
+          const formatDateLocal = (date: Date): string => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          
+          // Handle Date objects
+          if (dateValue instanceof Date) {
+            if (!isNaN(dateValue.getTime())) {
+              return formatDateLocal(dateValue);
+            }
+            return null;
+          }
+          
           if (typeof dateValue === 'string') {
             const dateStr = dateValue.trim();
-            if (!dateStr) return null;
+            if (!dateStr || dateStr === '') return null;
             
             // Handle formats like "23-Nov", "20-Nov", "11-Dec" (DD-MMM format)
             const ddmmyyyyMatch = dateStr.match(/^(\d{1,2})[-/](\w{3})(?:[-/](\d{2,4}))?$/i);
@@ -276,22 +330,59 @@ export async function POST(request: NextRequest) {
                 const fullYear = year < 100 ? (year < 50 ? 2000 + year : 1900 + year) : year;
                 const date = new Date(fullYear, month, day);
                 if (!isNaN(date.getTime())) {
-                  return date.toISOString().split('T')[0];
+                  return formatDateLocal(date);
                 }
               }
             }
             
-            // Try standard date parsing
+            // Handle DD/MM/YYYY or MM/DD/YYYY format
+            const slashMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+            if (slashMatch) {
+              const part1 = parseInt(slashMatch[1]);
+              const part2 = parseInt(slashMatch[2]);
+              const part3 = parseInt(slashMatch[3]);
+              const year = part3 < 100 ? (part3 < 50 ? 2000 + part3 : 1900 + part3) : part3;
+              
+              // Try DD/MM/YYYY first (more common in Mongolia)
+              let date = new Date(year, part2 - 1, part1);
+              if (!isNaN(date.getTime()) && date.getDate() === part1 && date.getMonth() === part2 - 1) {
+                return formatDateLocal(date);
+              }
+              
+              // Try MM/DD/YYYY
+              date = new Date(year, part1 - 1, part2);
+              if (!isNaN(date.getTime()) && date.getDate() === part2 && date.getMonth() === part1 - 1) {
+                return formatDateLocal(date);
+              }
+            }
+            
+            // Handle YYYY-MM-DD format
+            const isoMatch = dateStr.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+            if (isoMatch) {
+              const year = parseInt(isoMatch[1]);
+              const month = parseInt(isoMatch[2]) - 1;
+              const day = parseInt(isoMatch[3]);
+              const date = new Date(year, month, day);
+              if (!isNaN(date.getTime())) {
+                return formatDateLocal(date);
+              }
+            }
+            
+            // Try standard date parsing (handles many formats)
             const date = new Date(dateStr);
             if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
+              // Validate that it's a reasonable date (not 1970-01-01 for invalid dates)
+              if (date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+                return formatDateLocal(date);
+              }
             }
           } else if (typeof dateValue === 'number') {
-            // Excel date serial number
+            // Excel date serial number (days since 1900-01-01, but Excel incorrectly treats 1900 as leap year)
+            // Excel epoch is 1899-12-30
             const excelEpoch = new Date(1899, 11, 30);
             const date = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
             if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
+              return formatDateLocal(date);
             }
           }
           
@@ -303,18 +394,81 @@ export async function POST(request: NextRequest) {
         const parsedNumber = number ? parseInt(String(number)) : null;
         const parsedOrderDate = parseDate(orderDate);
         const parsedReceivedDate = parseDate(receivedDate);
-        const withDelivery = withDeliveryValue ? 
-          (String(withDeliveryValue).toLowerCase() === 'тийм' || 
-           String(withDeliveryValue).toLowerCase() === 'yes' || 
-           String(withDeliveryValue).toLowerCase() === 'true' ||
-           String(withDeliveryValue) === '1') : false;
+        const parsedPaidDate = parseDate(paidDate);
+        
+        // Parse with_delivery: can be boolean (true/false/тийм) or numeric (1, 2, 7)
+        let withDelivery = false;
+        let withDeliveryNumeric: number | null = null;
+        
+        if (withDeliveryValue !== null && withDeliveryValue !== undefined) {
+          const withDeliveryStr = String(withDeliveryValue).trim();
+          
+          // Try to parse as number first (handles both string numbers and actual numbers)
+          // This is important for preserving numeric values like 1, 2, 7 from Хүргэлттэй column
+          const numericValue = typeof withDeliveryValue === 'number' 
+            ? withDeliveryValue 
+            : parseFloat(withDeliveryStr);
+          
+          // If it's a valid number (including 0), use it
+          if (!isNaN(numericValue) && withDeliveryStr !== '') {
+            withDeliveryNumeric = numericValue;
+            // Convert to boolean: any non-zero number is true
+            withDelivery = numericValue !== 0;
+          } else if (withDeliveryStr !== '') {
+            // Parse as boolean string
+            const lowerStr = withDeliveryStr.toLowerCase();
+            withDelivery = lowerStr === 'тийм' || 
+                          lowerStr === 'yes' || 
+                          lowerStr === 'true' ||
+                          withDeliveryStr === '1';
+            // If it's a text value but we want to preserve numeric mapping, try to extract number
+            // For example, if user has "1" as text, we should still save it as numeric
+            const textToNumber: { [key: string]: number } = {
+              'тийм': 1,
+              'yes': 1,
+              'true': 1,
+              'үгүй': 0,
+              'no': 0,
+              'false': 0,
+            };
+            if (textToNumber[lowerStr] !== undefined) {
+              withDeliveryNumeric = textToNumber[lowerStr];
+            } else if (withDelivery) {
+              // If it's true but not in the mapping, default to 1
+              withDeliveryNumeric = 1;
+            }
+          }
+        }
+
+        // Parse toollogo (Тооллого) - should be numeric, but don't save to main fields
+        let toollogo: number | null = null;
+        if (toollogoValue !== null && toollogoValue !== undefined && toollogoValue !== '') {
+          const parsed = typeof toollogoValue === 'number' 
+            ? toollogoValue 
+            : parseFloat(String(toollogoValue));
+          if (!isNaN(parsed)) {
+            toollogo = parsed;
+          }
+        }
+
+        // Build metadata object (always use object, even if empty)
+        const metadata: any = {};
+        if (toollogo !== null && !isNaN(toollogo)) {
+          metadata.toollogo = toollogo;
+        }
+        // Always save with_delivery_numeric if it was parsed (even if 0)
+        // This is important for phone number colorization based on Хүргэлттэй values
+        if (withDeliveryNumeric !== null && withDeliveryNumeric !== undefined) {
+          metadata.with_delivery_numeric = withDeliveryNumeric;
+        }
 
         // Insert order with default status = 1 (шинэ үүссэн) and type = 2 (order menu)
+        // Pass metadata as object directly - PostgreSQL JSONB accepts JavaScript objects
         await pool.query(
           `INSERT INTO order_table (
             phone, baraanii_kod_id, price, comment, number,
-            order_date, received_date, feature, with_delivery, status, type
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            order_date, received_date, paid_date, feature, with_delivery, status, type, metadata
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             phone,
             baraaniiKodId,
@@ -323,10 +477,12 @@ export async function POST(request: NextRequest) {
             parsedNumber,
             parsedOrderDate,
             parsedReceivedDate,
+            parsedPaidDate,
             feature,
             withDelivery,
             1, // Default status: шинэ үүссэн
             2, // Type: order menu
+            metadata, // Pass object directly - pg will handle JSONB conversion
           ]
         );
 

@@ -21,8 +21,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // If status is 3 (хүргэлтэнд гарсна) and date is provided, update received_date
-    if (status === 3 && date) {
+    // If status is 2 (ирж авсан) or 3 (хүргэлтэнд гарсна) and date is provided, update received_date
+    if ((status === 2 || status === 3) && date) {
       const placeholders = orderIds.map((_, index) => `$${index + 3}`).join(', ');
       const result = await pool.query(
         `UPDATE order_table 

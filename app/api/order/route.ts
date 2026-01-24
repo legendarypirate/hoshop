@@ -37,7 +37,23 @@ export async function GET(request: NextRequest) {
     }
     
     const result = await pool.query(query, queryParams);
-    return NextResponse.json(result.rows);
+    
+    // Ensure metadata is always an object (not null)
+    const rows = result.rows.map((row: any) => {
+      if (row.metadata === null || row.metadata === undefined) {
+        row.metadata = {};
+      } else if (typeof row.metadata === 'string') {
+        // If metadata is a string, try to parse it
+        try {
+          row.metadata = JSON.parse(row.metadata);
+        } catch (e) {
+          row.metadata = {};
+        }
+      }
+      return row;
+    });
+    
+    return NextResponse.json(rows);
   } catch (error) {
     console.error('Error fetching orders:', error);
     return NextResponse.json(

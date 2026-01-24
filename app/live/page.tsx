@@ -277,14 +277,25 @@ export default function LivePage() {
         body: formData,
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Excel файл импортлоход алдаа гарлаа');
+        const errorMsg = data.error || data.message || 'Excel файл импортлоход алдаа гарлаа';
+        const errorDetails = data.errors && data.errors.length > 0 
+          ? `\n\nАлдаанууд:\n${data.errors.slice(0, 10).join('\n')}${data.errors.length > 10 ? `\n... ба ${data.errors.length - 10} илүү алдаа` : ''}`
+          : '';
+        throw new Error(errorMsg + errorDetails);
       }
 
       // Refresh orders after import
       await fetchOrders();
-      alert('Excel файл амжилттай импортлогдлоо');
+      
+      // Show appropriate message based on results
+      if (data.failed > 0) {
+        alert(`${data.message || 'Импорт хэсэгчлэн амжилттай'}\n\nАмжилттай: ${data.success}\nАмжилтгүй: ${data.failed}${data.errors && data.errors.length > 0 ? `\n\nАлдаанууд:\n${data.errors.slice(0, 5).join('\n')}${data.errors.length > 5 ? `\n... ба ${data.errors.length - 5} илүү алдаа` : ''}` : ''}`);
+      } else {
+        alert(`Excel файл амжилттай импортлогдлоо (${data.success} мөр)`);
+      }
     } catch (err: any) {
       setError(err.message || 'Excel файл импортлоход алдаа гарлаа');
     } finally {
@@ -382,7 +393,7 @@ export default function LivePage() {
   const getStatusColor = (status: number) => {
     switch (status) {
       case 1: // шинэ үүссэн
-        return 'bg-blue-300 hover:bg-blue-400';
+        return 'bg-white hover:bg-gray-50';
       case 2: // ирж авсан
         return 'bg-green-50 hover:bg-green-100';
       case 3: // хүргэлтгэнд гаргасан
