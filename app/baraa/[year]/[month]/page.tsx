@@ -18,6 +18,11 @@ interface Order {
   baraanii_kod_name?: string;
   status: number;
   paid_date: string | null;
+  metadata?: {
+    toollogo?: number;
+    price_toollogo?: number;
+    with_delivery_numeric?: number;
+  } | null;
 }
 
 interface BaraaStatistics {
@@ -83,6 +88,7 @@ export default function BaraaMonthStatisticsPage() {
         const kodId = order.baraanii_kod_id;
         const kodName = order.baraanii_kod_name || `ID: ${kodId}`;
         const status = order.status || 1; // Default to 1 if null
+        const withDeliveryNumeric = order.metadata?.with_delivery_numeric;
         
         if (!grouped.has(kodId)) {
           grouped.set(kodId, {
@@ -98,9 +104,14 @@ export default function BaraaMonthStatisticsPage() {
         const stats = grouped.get(kodId)!;
         stats.total++;
         
-        if (status === 3) {
+        // Check for red (хүргэлтэнд гарсан): with_delivery_numeric === 7 OR status === 3
+        const hasRed = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 7) || status === 3;
+        // Check for green (ирж авсан): with_delivery_numeric === 1 OR status === 2
+        const hasGreen = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 1) || status === 2;
+        
+        if (hasRed) {
           stats.delivered++;
-        } else if (status === 2) {
+        } else if (hasGreen) {
           stats.received++;
         } else {
           stats.noStatus++;
