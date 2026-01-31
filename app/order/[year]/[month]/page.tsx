@@ -422,6 +422,18 @@ export default function OrderMonthPage() {
 
   // Get background color for phone column
   const getPhoneBackgroundColor = (order: Order): string => {
+    // First check with_delivery_numeric from metadata
+    const withDeliveryNumeric = order.metadata?.with_delivery_numeric;
+    if (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null) {
+      if (Number(withDeliveryNumeric) === 1) {
+        // Ирж авсан - deep green with white text
+        return 'bg-green-700 text-white';
+      } else if (Number(withDeliveryNumeric) === 7) {
+        // Хүргэлтэнд гарсан - deep red with white text
+        return 'bg-red-700 text-white';
+      }
+    }
+    // Fall back to status if with_delivery_numeric is not available
     const status = order.status;
     if (status === 2) {
       // Ирж авсан - deep green with white text
@@ -1229,7 +1241,9 @@ export default function OrderMonthPage() {
                     {formatDate(order.order_date)}
                   </TableCell>
                   <TableCell>
-                    {order.with_delivery ? 'Тийм' : 'Үгүй'}
+                    {order.metadata?.with_delivery_numeric !== undefined && order.metadata?.with_delivery_numeric !== null
+                      ? String(order.metadata.with_delivery_numeric)
+                      : order.with_delivery ? 'Тийм' : 'Үгүй'}
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate">
                     {order.comment || '-'}
