@@ -129,6 +129,7 @@ export default function OrderMonthPage() {
     comment: '',
     phoneColor: 'all',
     kodColor: 'all',
+    priceColor: 'all',
   });
 
   // Date range filter states
@@ -649,16 +650,28 @@ export default function OrderMonthPage() {
     }
     
     if (filters.phoneColor && filters.phoneColor !== 'all') {
+      const withDeliveryNumeric = order.metadata?.with_delivery_numeric;
       const status = order.status || 1;
       const filterValue = parseInt(filters.phoneColor);
+      
       if (filterValue === 0) {
-        // Filter for white (status 1 only)
-        if (status !== 1) {
+        // Filter for white (no red or green background)
+        // White means: not (with_delivery_numeric === 1 or 7) AND not (status === 2 or 3)
+        const hasGreen = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 1) || status === 2;
+        const hasRed = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 7) || status === 3;
+        if (hasGreen || hasRed) {
           return false;
         }
-      } else {
-        // Filter by status: 2 = ирж авсан, 3 = хүргэлтэнд гарсан
-        if (status !== filterValue) {
+      } else if (filterValue === 2) {
+        // Filter for green (ирж авсан): with_delivery_numeric === 1 OR status === 2
+        const hasGreen = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 1) || status === 2;
+        if (!hasGreen) {
+          return false;
+        }
+      } else if (filterValue === 3) {
+        // Filter for red (хүргэлтэнд гарсан): with_delivery_numeric === 7 OR status === 3
+        const hasRed = (withDeliveryNumeric !== undefined && withDeliveryNumeric !== null && Number(withDeliveryNumeric) === 7) || status === 3;
+        if (!hasRed) {
           return false;
         }
       }
@@ -686,6 +699,34 @@ export default function OrderMonthPage() {
       const priceFilter = parseFloat(filters.price);
       if (isNaN(priceFilter) || order.price === null || order.price !== priceFilter) {
         if (!formatCurrency(order.price).includes(filters.price)) {
+          return false;
+        }
+      }
+    }
+    
+    if (filters.priceColor && filters.priceColor !== 'all') {
+      const priceToollogo = order.metadata?.price_toollogo;
+      const status = order.status || 1;
+      const filterValue = filters.priceColor;
+      
+      if (filterValue === 'red') {
+        // Filter for red background (status 3)
+        if (status !== 3) {
+          return false;
+        }
+      } else if (filterValue === 'green') {
+        // Filter for green background (status 2)
+        if (status !== 2) {
+          return false;
+        }
+      } else if (filterValue === 'white') {
+        // Filter for white background (status 1 and no blue overlay)
+        if (status !== 1 || (priceToollogo !== undefined && priceToollogo !== null && Number(priceToollogo) === 3)) {
+          return false;
+        }
+      } else if (filterValue === 'blue') {
+        // Filter for blue background (price_toollogo === 3)
+        if (priceToollogo === undefined || priceToollogo === null || Number(priceToollogo) !== 3) {
           return false;
         }
       }
@@ -1116,6 +1157,21 @@ export default function OrderMonthPage() {
                     onChange={(e) => handleFilterChange('price', e.target.value)}
                     className="h-8 text-xs"
                   />
+                  <Select
+                    value={filters.priceColor}
+                    onValueChange={(value) => handleFilterChange('priceColor', value)}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Өнгөөр шүүх" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Бүгд</SelectItem>
+                      <SelectItem value="red">🔴 Улаан</SelectItem>
+                      <SelectItem value="green">🟢 Ногоон</SelectItem>
+                      <SelectItem value="blue">🔵 Цэнхэр</SelectItem>
+                      <SelectItem value="white">⚪ Цагаан</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </TableHead>
               <TableHead>
