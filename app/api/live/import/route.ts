@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getSession } from '@/lib/auth';
 
 // Load column mappings from database, fallback to defaults
 async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<string, { columnNames: string[]; isRequired: boolean }>> {
@@ -60,6 +61,9 @@ async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<str
 }
 
 export async function POST(request: NextRequest) {
+  const client = await pool.connect();
+  let importBatchId: number | null = null;
+  
   try {
     const XLSX = require('xlsx');
     
@@ -73,6 +77,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get current user for tracking
+    const session = await getSession();
+    const userId = session?.id || null;
+
+    // Create import batch record
+    const batchResult = await client.query(
+      `INSERT INTO import_batches (import_type, file_name, created_by) 
+       VALUES ($1, $2, $3) RETURNING id`,
+      ['live', file.name, userId]
+    );
+    importBatchId = batchResult.rows[0]?.id || null;
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -82,6 +98,10 @@ export async function POST(request: NextRequest) {
     const data = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: null });
 
     if (!Array.isArray(data) || data.length === 0) {
+      // Delete the batch if no data
+      if (importBatchId) {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      }
       return NextResponse.json(
         { error: 'Excel файл хоосон эсвэл буруу форматтай байна' },
         { status: 400 }
@@ -162,7 +182,7 @@ export async function POST(request: NextRequest) {
       return null;
     };
 
-    const kodResult = await pool.query('SELECT id, kod FROM baraanii_kod');
+    const kodResult = await client.query('SELECT id, kod FROM baraanii_kod');
     const kodMap = new Map<string, number>();
     kodResult.rows.forEach((row: { id: number; kod: string }) => {
       kodMap.set(row.kod.toLowerCase().trim(), row.id);
@@ -216,7 +236,7 @@ export async function POST(request: NextRequest) {
           baraaniiKodId = kodMap.get(kod.toLowerCase().trim());
           if (!baraaniiKodId) {
             try {
-              const insertResult = await pool.query(
+              const insertResult = await client.query(
                 'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
                 [kod.trim()]
               );
@@ -332,11 +352,11 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        await pool.query(
+        await client.query(
           `INSERT INTO order_table (
             phone, baraanii_kod_id, price, comment, number,
-            order_date, received_date, paid_date, feature, with_delivery, status, type
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            order_date, received_date, paid_date, feature, with_delivery, status, type, import_batch_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             phone || null,
             baraaniiKodId || null,
@@ -350,6 +370,7 @@ export async function POST(request: NextRequest) {
             withDelivery,
             1,
             1,
+            importBatchId,
           ]
         );
 
@@ -360,8 +381,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If no rows were successfully imported, return error
+    // Update import batch with final results
+    if (importBatchId) {
+      await client.query(
+        `UPDATE import_batches 
+         SET total_rows = $1, successful_rows = $2, failed_rows = $3 
+         WHERE id = $4`,
+        [data.length, results.success, results.failed, importBatchId]
+      );
+    }
+
+    // If no rows were successfully imported, delete the batch and return error
     if (results.success === 0 && results.failed > 0) {
+      if (importBatchId) {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      }
       return NextResponse.json(
         {
           error: 'Импорт амжилтгүй',
@@ -374,8 +408,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If no rows at all were processed, return error
+    // If no rows at all were processed, delete the batch and return error
     if (results.success === 0 && results.failed === 0) {
+      if (importBatchId) {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      }
       return NextResponse.json(
         {
           error: 'Импорт амжилтгүй',
@@ -396,13 +433,24 @@ export async function POST(request: NextRequest) {
       success: results.success,
       failed: results.failed,
       errors: results.errors.slice(0, 50),
+      import_batch_id: importBatchId,
     });
   } catch (error: any) {
     console.error('Error importing Excel:', error);
+    // Clean up batch on error
+    if (importBatchId) {
+      try {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      } catch (cleanupError) {
+        console.error('Error cleaning up import batch:', cleanupError);
+      }
+    }
     return NextResponse.json(
       { error: error.message || 'Excel файл импортлоход алдаа гарлаа' },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getSession } from '@/lib/auth';
 
 // Load column mappings from database, fallback to defaults
 async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<string, { columnNames: string[]; isRequired: boolean }>> {
@@ -75,6 +76,9 @@ async function loadColumnMappings(importType: 'live' | 'order'): Promise<Map<str
 }
 
 export async function POST(request: NextRequest) {
+  const client = await pool.connect();
+  let importBatchId: number | null = null;
+  
   try {
     // Use require for xlsx (CommonJS module) - works in Next.js API routes
     const XLSX = require('xlsx');
@@ -89,6 +93,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get current user for tracking
+    const session = await getSession();
+    const userId = session?.id || null;
+
+    // Create import batch record
+    const batchResult = await client.query(
+      `INSERT INTO import_batches (import_type, file_name, created_by) 
+       VALUES ($1, $2, $3) RETURNING id`,
+      ['order', file.name, userId]
+    );
+    importBatchId = batchResult.rows[0]?.id || null;
+
     // Read file as buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -101,6 +117,10 @@ export async function POST(request: NextRequest) {
     const data = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: null });
 
     if (!Array.isArray(data) || data.length === 0) {
+      // Delete the batch if no data
+      if (importBatchId) {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      }
       return NextResponse.json(
         { error: 'Excel файл хоосон эсвэл буруу форматтай байна' },
         { status: 400 }
@@ -179,7 +199,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Get all baraanii_kod for mapping
-    const kodResult = await pool.query('SELECT id, kod FROM baraanii_kod');
+    const kodResult = await client.query('SELECT id, kod FROM baraanii_kod');
     const kodMap = new Map<string, number>();
     kodResult.rows.forEach((row: { id: number; kod: string }) => {
       kodMap.set(row.kod.toLowerCase().trim(), row.id);
@@ -236,7 +256,7 @@ export async function POST(request: NextRequest) {
         let baraaniiKodId = kodMap.get(kod.toLowerCase());
         if (!baraaniiKodId) {
           // Create new baraanii_kod
-          const insertResult = await pool.query(
+          const insertResult = await client.query(
             'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
             [kod]
           );
@@ -464,11 +484,11 @@ export async function POST(request: NextRequest) {
 
         // Insert order with default status = 1 (шинэ үүссэн) and type = 2 (order menu)
         // Pass metadata as object directly - PostgreSQL JSONB accepts JavaScript objects
-        await pool.query(
+        await client.query(
           `INSERT INTO order_table (
             phone, baraanii_kod_id, price, comment, number,
-            order_date, received_date, paid_date, feature, with_delivery, status, type, metadata
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            order_date, received_date, paid_date, feature, with_delivery, status, type, metadata, import_batch_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [
             phone,
             baraaniiKodId,
@@ -483,6 +503,7 @@ export async function POST(request: NextRequest) {
             1, // Default status: шинэ үүссэн
             2, // Type: order menu
             metadata, // Pass object directly - pg will handle JSONB conversion
+            importBatchId,
           ]
         );
 
@@ -493,18 +514,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Update import batch with final results
+    if (importBatchId) {
+      await client.query(
+        `UPDATE import_batches 
+         SET total_rows = $1, successful_rows = $2, failed_rows = $3 
+         WHERE id = $4`,
+        [data.length, results.success, results.failed, importBatchId]
+      );
+    }
+
     return NextResponse.json({
       message: 'Импорт амжилттай',
       success: results.success,
       failed: results.failed,
       errors: results.errors.slice(0, 50), // Limit to first 50 errors
+      import_batch_id: importBatchId,
     });
   } catch (error: any) {
     console.error('Error importing Excel:', error);
+    // Clean up batch on error
+    if (importBatchId) {
+      try {
+        await client.query('DELETE FROM import_batches WHERE id = $1', [importBatchId]);
+      } catch (cleanupError) {
+        console.error('Error cleaning up import batch:', cleanupError);
+      }
+    }
     return NextResponse.json(
       { error: error.message || 'Excel файл импортлоход алдаа гарлаа' },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }
 

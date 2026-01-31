@@ -15,7 +15,8 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  Activity
+  Activity,
+  Upload
 } from 'lucide-react';
 
 const menuItems = [
@@ -48,6 +49,11 @@ const menuItems = [
     title: 'Live',
     href: '/live',
     icon: Activity,
+  },
+  {
+    title: 'Импортууд',
+    href: '/imports',
+    icon: Upload,
   },
 ];
 
