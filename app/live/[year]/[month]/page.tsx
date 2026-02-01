@@ -530,7 +530,7 @@ export default function LiveMonthPage() {
       return false;
     }
     
-    if (filters.kod && !(order.baraanii_kod_name || '').toLowerCase().includes(filters.kod.toLowerCase())) {
+    if (filters.kod && (order.baraanii_kod_name || '').toLowerCase() !== filters.kod.toLowerCase()) {
       return false;
     }
     
