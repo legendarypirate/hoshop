@@ -9,7 +9,8 @@
     "lint": "eslint",
     "setup-db": "node scripts/setup-db.js",
     "init-admin": "tsx scripts/init-admin.ts",
-    "add-type-column": "tsx scripts/add-type-column.ts"
+    "add-type-column": "tsx scripts/add-type-column.ts",
+    "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
