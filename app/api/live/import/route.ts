@@ -194,6 +194,18 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     };
 
+    const parseOptionalInteger = (value: unknown): number | null => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') {
+        if (!Number.isFinite(value)) return null;
+        return Math.trunc(value);
+      }
+      const s = String(value).trim();
+      if (s === '' || s.toLowerCase() === 'nan') return null;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : null;
+    };
+
     for (let i = 0; i < data.length; i++) {
       const row = data[i] as any;
       const rowNum = i + 2;
@@ -219,15 +231,14 @@ export async function POST(request: NextRequest) {
         const phoneMapping = columnMappings.get('phone');
         if (phoneMapping?.isRequired && (!phone || phone === '')) {
           results.failed++;
-          const availableCols = Object.keys(row).join(', ');
-          results.errors.push(`Мөр ${rowNum}: Утасны дугаар оруулах шаардлагатай${availableCols ? ` (Олдсон багана: ${availableCols})` : ''}`);
+          results.errors.push(`Мөр ${rowNum}: Утасны дугаар байхгүй`);
           continue;
         }
 
         const kodMapping = columnMappings.get('kod');
         if (kodMapping?.isRequired && !kod) {
           results.failed++;
-          results.errors.push(`Мөр ${rowNum}: Барааны код оруулах шаардлагатай`);
+          results.errors.push(`Мөр ${rowNum}: Барааны код байхгүй`);
           continue;
         }
 
@@ -334,7 +345,7 @@ export async function POST(request: NextRequest) {
         };
 
         const parsedPrice = parsePrice(price);
-        const parsedNumber = number ? parseInt(String(number)) : null;
+        const parsedNumber = parseOptionalInteger(number);
         const parsedOrderDate = parseDate(orderDate);
         const parsedReceivedDate = parseDate(receivedDate);
         const parsedPaidDate = parseDate(paidDate);
@@ -347,8 +358,7 @@ export async function POST(request: NextRequest) {
         // Validate that we have at least phone or kod (one should be present)
         if ((!phone || phone === '') && (!kod || kod === '')) {
           results.failed++;
-          const availableCols = Object.keys(row).join(', ');
-          results.errors.push(`Мөр ${rowNum}: Утасны дугаар эсвэл Барааны код заавал байх ёстой${availableCols ? ` (Олдсон багана: ${availableCols})` : ''}`);
+          results.errors.push(`Мөр ${rowNum}: Утас эсвэл код байхгүй`);
           continue;
         }
 
@@ -383,12 +393,29 @@ export async function POST(request: NextRequest) {
 
     // Update import batch with final results
     if (importBatchId) {
-      await client.query(
-        `UPDATE import_batches 
-         SET total_rows = $1, successful_rows = $2, failed_rows = $3 
-         WHERE id = $4`,
-        [data.length, results.success, results.failed, importBatchId]
-      );
+      const errorsForDb = results.errors.slice(0, 500);
+      try {
+        await client.query(
+          `UPDATE import_batches 
+           SET total_rows = $1, successful_rows = $2, failed_rows = $3,
+               error_details = $4::jsonb
+           WHERE id = $5`,
+          [
+            data.length,
+            results.success,
+            results.failed,
+            JSON.stringify(errorsForDb),
+            importBatchId,
+          ]
+        );
+      } catch {
+        await client.query(
+          `UPDATE import_batches 
+           SET total_rows = $1, successful_rows = $2, failed_rows = $3 
+           WHERE id = $4`,
+          [data.length, results.success, results.failed, importBatchId]
+        );
+      }
     }
 
     // If no rows were successfully imported, delete the batch and return error
@@ -402,7 +429,7 @@ export async function POST(request: NextRequest) {
           message: `Бүх мөр амжилтгүй боллоо (${results.failed} мөр)`,
           success: results.success,
           failed: results.failed,
-          errors: results.errors.slice(0, 50),
+          errors: results.errors.slice(0, 500),
         },
         { status: 400 }
       );
@@ -432,7 +459,7 @@ export async function POST(request: NextRequest) {
         : 'Импорт амжилттай',
       success: results.success,
       failed: results.failed,
-      errors: results.errors.slice(0, 50),
+      errors: results.errors.slice(0, 500),
       import_batch_id: importBatchId,
     });
   } catch (error: any) {

@@ -101,8 +101,25 @@ export async function GET(
       );
     }
 
-    const result = await pool.query(
-      `SELECT 
+    const queryWithErrors = `SELECT 
+        ib.id,
+        ib.import_type,
+        ib.file_name,
+        ib.total_rows,
+        ib.successful_rows,
+        ib.failed_rows,
+        COALESCE(ib.error_details, '[]'::jsonb) AS error_details,
+        ib.created_at,
+        ib.created_by,
+        u.phone as created_by_phone,
+        COUNT(ot.id) as actual_imported_count
+      FROM import_batches ib
+      LEFT JOIN users u ON ib.created_by = u.id
+      LEFT JOIN order_table ot ON ot.import_batch_id = ib.id
+      WHERE ib.id = $1
+      GROUP BY ib.id, ib.import_type, ib.file_name, ib.total_rows, ib.successful_rows, ib.failed_rows, ib.error_details, ib.created_at, ib.created_by, u.phone`;
+
+    const queryLegacy = `SELECT 
         ib.id,
         ib.import_type,
         ib.file_name,
@@ -117,9 +134,14 @@ export async function GET(
       LEFT JOIN users u ON ib.created_by = u.id
       LEFT JOIN order_table ot ON ot.import_batch_id = ib.id
       WHERE ib.id = $1
-      GROUP BY ib.id, ib.import_type, ib.file_name, ib.total_rows, ib.successful_rows, ib.failed_rows, ib.created_at, ib.created_by, u.phone`,
-      [batchId]
-    );
+      GROUP BY ib.id, ib.import_type, ib.file_name, ib.total_rows, ib.successful_rows, ib.failed_rows, ib.created_at, ib.created_by, u.phone`;
+
+    let result;
+    try {
+      result = await pool.query(queryWithErrors, [batchId]);
+    } catch {
+      result = await pool.query(queryLegacy, [batchId]);
+    }
 
     if (result.rows.length === 0) {
       return NextResponse.json(
@@ -128,7 +150,12 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(result.rows[0]);
+    const row = result.rows[0];
+    if (row.error_details === undefined) {
+      row.error_details = [];
+    }
+
+    return NextResponse.json(row);
   } catch (error: any) {
     console.error('Error fetching import batch:', error);
     return NextResponse.json(

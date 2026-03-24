@@ -29,6 +29,7 @@ const pool = new Pool({
 const MIGRATIONS_ORDER = [
   'create-users-table.sql',
   'add-import-batch-tracking.sql',
+  'add-import-batch-error-details.sql',
   'add-status-column.sql',
   'add-metadata-column.sql',
   'add-display-order-column.sql',

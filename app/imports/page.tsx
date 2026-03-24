@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Trash2, RefreshCw } from 'lucide-react';
+import { Trash2, RefreshCw, X } from 'lucide-react';
 
 interface ImportBatch {
   id: number;
@@ -49,6 +49,12 @@ export default function ImportsPage() {
   const [revertingId, setRevertingId] = useState<number | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [selectedImportId, setSelectedImportId] = useState<number | null>(null);
+  const [failuresDrawer, setFailuresDrawer] = useState<{
+    batchId: number;
+    fileName: string | null;
+  } | null>(null);
+  const [failureMessages, setFailureMessages] = useState<string[]>([]);
+  const [failuresLoading, setFailuresLoading] = useState(false);
 
   useEffect(() => {
     fetchImports();
@@ -100,6 +106,42 @@ export default function ImportsPage() {
   const openConfirmDialog = (importId: number) => {
     setSelectedImportId(importId);
     setConfirmDialogOpen(true);
+  };
+
+  const openFailuresDrawer = async (batch: ImportBatch) => {
+    if (batch.failed_rows <= 0) return;
+    setFailuresDrawer({ batchId: batch.id, fileName: batch.file_name });
+    setFailuresLoading(true);
+    setFailureMessages([]);
+    try {
+      const response = await fetch(`/api/imports/${batch.id}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Алдаа');
+      }
+      const raw = data.error_details;
+      let list: string[] = [];
+      if (Array.isArray(raw)) {
+        list = raw;
+      } else if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          list = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          list = [];
+        }
+      }
+      setFailureMessages(list);
+    } catch {
+      setFailureMessages(['Амжилтгүй мөрүүдийн жагсаалт татахад алдаа гарлаа']);
+    } finally {
+      setFailuresLoading(false);
+    }
+  };
+
+  const closeFailuresDrawer = () => {
+    setFailuresDrawer(null);
+    setFailureMessages([]);
   };
 
   const formatDate = (dateString: string) => {
@@ -195,7 +237,17 @@ export default function ImportsPage() {
                     {importBatch.successful_rows}
                   </TableCell>
                   <TableCell className="text-red-600">
-                    {importBatch.failed_rows}
+                    {importBatch.failed_rows > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openFailuresDrawer(importBatch)}
+                        className="font-medium underline underline-offset-2 hover:text-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 rounded-sm"
+                      >
+                        {importBatch.failed_rows}
+                      </button>
+                    ) : (
+                      importBatch.failed_rows
+                    )}
                   </TableCell>
                   <TableCell className="font-medium">
                     {importBatch.actual_imported_count}
@@ -223,6 +275,53 @@ export default function ImportsPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {failuresDrawer && (
+        <>
+          <button
+            type="button"
+            aria-label="Хаах"
+            className="fixed inset-0 z-50 bg-black/50"
+            onClick={closeFailuresDrawer}
+          />
+          <div className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l bg-background shadow-xl">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div>
+                <h2 className="text-lg font-semibold">Амжилтгүй мөрүүд</h2>
+                <p className="text-muted-foreground text-sm truncate max-w-[280px]">
+                  {failuresDrawer.file_name || `Импорт #${failuresDrawer.batchId}`}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={closeFailuresDrawer}
+                aria-label="Хаах"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              {failuresLoading ? (
+                <p className="text-muted-foreground text-sm">Ачааллаж байна...</p>
+              ) : failureMessages.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  Энэ импортод алдааны мэдээлэл хадгалагдаагүй байна (хуучин импорт эсвэл бүх мөр амжилттай).
+                </p>
+              ) : (
+                <ol className="list-decimal space-y-2 pl-4 text-sm">
+                  {failureMessages.map((line, idx) => (
+                    <li key={idx} className="break-words">
+                      {line}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
