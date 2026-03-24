@@ -89,6 +89,32 @@ const monthNames = [
   '12-р сар',
 ];
 
+/** Calendar year/month from a DB date or ISO string (avoids UTC shift on YYYY-MM-DD). */
+function parseYearMonthFromDateValue(value: string | null | undefined): {
+  year: number;
+  month: number;
+} | null {
+  if (!value) return null;
+  const s = String(value);
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    return { year: parseInt(ymd[1], 10), month: parseInt(ymd[2], 10) };
+  }
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+
+/** Which month an order belongs to: төлбөрийн огноо, then захиалга, then ирсэн, then үүсгэсэн. */
+function getOrderListYearMonth(order: Order): { year: number; month: number } | null {
+  const raw =
+    order.paid_date ||
+    order.order_date ||
+    order.received_date ||
+    (order.created_at ? order.created_at.slice(0, 10) : null);
+  return parseYearMonthFromDateValue(raw);
+}
+
 export default function OrderMonthPage() {
   const params = useParams();
   const router = useRouter();
@@ -163,13 +189,9 @@ export default function OrderMonthPage() {
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       
-      // Filter by paid_date year and month
       const filtered = data.filter((order: Order) => {
-        if (!order.paid_date) return false;
-        const orderDate = new Date(order.paid_date);
-        const orderYear = orderDate.getFullYear();
-        const orderMonth = orderDate.getMonth() + 1; // getMonth() returns 0-11
-        return orderYear === yearNum && orderMonth === monthNum;
+        const ym = getOrderListYearMonth(order);
+        return ym !== null && ym.year === yearNum && ym.month === monthNum;
       });
       
       setOrders(filtered);
