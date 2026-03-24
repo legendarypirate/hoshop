@@ -265,8 +265,11 @@ export async function POST(request: NextRequest) {
 
         let baraaniiKodId: number | null = null;
         if (kod) {
-          let resolved = kodMap.get(kod.toLowerCase());
-          if (!resolved) {
+          const fromMap = kodMap.get(kod.toLowerCase());
+          let kodId: number;
+          if (fromMap !== undefined) {
+            kodId = fromMap;
+          } else {
             const insertResult = await client.query(
               'INSERT INTO baraanii_kod (kod) VALUES ($1) ON CONFLICT (kod) DO UPDATE SET kod = EXCLUDED.kod RETURNING id',
               [kod]
@@ -277,10 +280,10 @@ export async function POST(request: NextRequest) {
               results.errors.push(`Мөр ${rowNum}: Барааны код үүсгэхэд алдаа гарлаа`);
               continue;
             }
-            resolved = newId;
+            kodId = newId;
             kodMap.set(kod.toLowerCase(), newId);
           }
-          baraaniiKodId = resolved;
+          baraaniiKodId = kodId;
         }
 
         // Parse price

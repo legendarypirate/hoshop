@@ -290,7 +290,7 @@ export default function ImportsPage() {
               <div>
                 <h2 className="text-lg font-semibold">Амжилтгүй мөрүүд</h2>
                 <p className="text-muted-foreground text-sm truncate max-w-[280px]">
-                  {failuresDrawer.file_name || `Импорт #${failuresDrawer.batchId}`}
+                  {failuresDrawer.fileName || `Импорт #${failuresDrawer.batchId}`}
                 </p>
               </div>
               <Button
