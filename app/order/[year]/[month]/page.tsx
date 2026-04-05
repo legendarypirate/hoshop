@@ -105,13 +105,20 @@ function parseYearMonthFromDateValue(value: string | null | undefined): {
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-/** Which month an order belongs to: төлбөрийн огноо, then захиалга, then ирсэн, then үүсгэсэн. */
+/**
+ * Which month an order belongs to in /order/[year]/[month].
+ * - Захиалга / төлбөрийн огноо first (stable).
+ * - created_at before received_date: "Ирж авсан" updates received_date and must not move the row
+ *   to another month when order/paid were empty (previously bucketed by created_at).
+ * - received_date last (e.g. import-only "ирсэн" date when nothing else exists).
+ */
 function getOrderListYearMonth(order: Order): { year: number; month: number } | null {
+  const createdYmd = order.created_at ? order.created_at.slice(0, 10) : null;
   const raw =
-    order.paid_date ||
     order.order_date ||
-    order.received_date ||
-    (order.created_at ? order.created_at.slice(0, 10) : null);
+    order.paid_date ||
+    createdYmd ||
+    order.received_date;
   return parseYearMonthFromDateValue(raw);
 }
 
